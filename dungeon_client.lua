@@ -14,22 +14,48 @@ local gfx = {}
 
 gfx = {
   
-  tileSize = 10.0,
+  tileSize = 20.0,
+  offsetX = 200.0,
+  offsetY = 200.0,
+  
+  drawBorder = function()
+    
+    local edge = (NetConstants.ClientVisibility-1) * gfx.tileSize;
+    
+    love.graphics.setColor(1.0, 1.0, 1.0, 1.0);
+    
+    love.graphics.setLineWidth(gfx.tileSize* 0.1);
+    
+    love.graphics.rectangle("line", 
+      gfx.offsetX - edge, 
+      gfx.offsetY - edge,
+      edge * 2.0,
+      edge * 2.0
+    );
+  
+  end,
   
   drawEntity = {
   
-    [EntityType.Wall] = function(wall) 
+    [EntityType.Wall] = function(wall, center) 
       local ts = gfx.tileSize;
     
       love.graphics.setColor(1.0, 0.0, 0.0, 1.0);
-      love.graphics.rectangle("fill", wall.x * ts + 100.0, wall.y * ts + 100.0, ts * wall.w, ts * wall.h);
+      love.graphics.rectangle("fill", 
+      (wall.x-center.x) * ts + gfx.offsetX, 
+      (wall.y-center.y) * ts + gfx.offsetY, 
+      ts * wall.w, ts * wall.h);
+      
     end,
     
-    [EntityType.Player] = function(player)
+    [EntityType.Player] = function(player, center)
       local ts = gfx.tileSize;
     
       love.graphics.setColor(1.0, 1.0, 1.0, 1.0);
-      love.graphics.rectangle("fill", player.x * ts + 100.0, player.y * ts + 100.0, ts, ts);
+      love.graphics.rectangle("fill", 
+        (player.x-center.x) * ts + gfx.offsetX, 
+        (player.y-center.y) * ts + gfx.offsetY, 
+        ts, ts);
       
     end
   
@@ -62,14 +88,18 @@ end
 
 function PlayController:draw()
   
-  gfx.drawEntity[EntityType.Player](PlayerHistory.getLastState(self.playerHistory));
-
+  local playerState = PlayerHistory.getLastState(self.playerHistory);
+    
   for k,v in pairs(client.share.entities or {}) do
     
-    gfx.drawEntity[v.type](v);
+    gfx.drawEntity[v.type](v, playerState);
   
   end
   
+  gfx.drawEntity[EntityType.Player](playerState, playerState);
+
+  gfx.drawBorder();
+
 end
 
 function PlayController:receive(msg)
@@ -118,7 +148,10 @@ else
 end
 
 function client.load()
-
+  local w, h = love.graphics.getDimensions();
+  gfx.offsetX = w / 2.0;
+  gfx.offsetY = h / 2.0;
+    
   State = {
     controller = PlayController:new(),
     keyboard = {
@@ -153,6 +186,14 @@ end
 function client.draw()
 
   State.controller:draw()
+
+end
+
+function client.resize()
+  
+    local w, h = love.graphics.getDimensions();
+    gfx.offsetX = w / 2.0;
+    gfx.offsetY = h / 2.0;
 
 end
 

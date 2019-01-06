@@ -12,17 +12,10 @@ else
     server.start('22122') -- Port of server
 end
 
+local gameState = {};
 
-
-local gameState = {}
-
-local share = server.share
-local homes = server.homes
-
-local CLIENT_VISIBILITY = 5
-
-
-
+local share = server.share;
+local homes = server.homes;
 
 function addEntity(entity)
 
@@ -50,19 +43,16 @@ function loadMap()
   local space = gameState.space;
   
   -- Add some dummy entities
-  for i = 1,10 do
+  for i = 0,24 do
         
-    -- Add wall to spatial hash at pos = i,i and size = 1,1
-    local wall = {
+    addEntity({
       type = EntityType.Wall,
       uuid = "w"..i,
-      x = i,
-      y = i,
-      w = 1,
-      h = 1
-    }
-    
-    addEntity(wall)
+      x = (math.floor(i / 5)-2) * 5 + 2,
+      y = ((i % 5)-2) * 5 + 2,
+      w = 2,
+      h = 2
+    })
   
   end
   
@@ -94,9 +84,12 @@ function loadMap()
       --end
     end
     
-    -- Use our spacial hash to call makeRelevant on nearby entities
-    space:each(playerState.x - CLIENT_VISIBILITY, playerState.y - CLIENT_VISIBILITY,
-               CLIENT_VISIBILITY * 2, CLIENT_VISIBILITY * 2, makeRelevant);
+    -- Use our spatial hash to call makeRelevant on visible entities
+    
+    local viz = NetConstants.ClientVisibility;
+    
+    space:each(playerState.x - viz, playerState.y - viz,
+               viz * 2, viz * 2, makeRelevant);
 
     return result;
   end)
@@ -141,7 +134,7 @@ function updatePlayers()
           
       --Server player state
       local player = share.entities[id];
-      local foundUpdate = false;
+      local shouldSyncClient = true;
     
       if (home.playerHistory) then
         
@@ -150,10 +143,13 @@ function updatePlayers()
         
         if (clientState) then
           
-          foundUpdate = true;
+          --Most likely don't need to sync, unless client is too far from server state
+          
+          shouldSyncClient = EntityUtil.distanceSquared(player, clientState) > NetConstants.StrayDistance;
           
           local oldX, oldY = player.x, player.y;
           
+          -- Move player
           player.x, player.y = EntityUtil.applyVelocity(player, clientState);
           
           rehashEntity(player)
@@ -175,7 +171,7 @@ function updatePlayers()
       
       
       
-      if (not foundUpdate) then
+      if (shouldSyncClient) then
         
         server.send(id, {
           

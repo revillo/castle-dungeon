@@ -3,7 +3,9 @@ local List = require("lib/list")
 local NetConstants = {
   TickInterval = 1.0 / 60.0,
   PlayerSpeed = 0.1,
-  MaxHistory = 20
+  ClientVisibility = 10,
+  MaxHistory = 20,
+  StrayDistance = 0.2 -- Max units a player can stray from server before resync
 }
 
 local EntityType = {
@@ -29,6 +31,16 @@ local EntityUtil = {
     end
   
     return pos.x, pos.y;
+  end,
+  
+  
+  distanceSquared = function(pos1, pos2) 
+    
+    local dx = pos2.x - pos1.x
+    local dy = pos2.y - pos1.y;
+
+    return dx * dx + dy * dy;
+     
   end
 }
 
