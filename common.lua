@@ -4,6 +4,7 @@ local NetConstants = {
   TickInterval = 1.0 / 60.0,
   PlayerSpeed = 0.1,
   ClientVisibility = 10,
+  CellSize = 1,
   MaxHistory = 20,
   StrayDistance = 0.2 -- Max units a player can stray from server before resync
 }
@@ -41,7 +42,34 @@ local EntityUtil = {
 
     return dx * dx + dy * dy;
      
+  end,
+  
+  overlapsType = function(entity, space, type)
+    
+    local doesOverlap = false;
+    
+    local typeTest = function(ent) 
+      doesOverlap = (ent.type == type);
+      --if(doesOverlap) then print("overlaps") end
+    end
+    
+    if (space:contains(entity)) then
+      space:each(entity, typeTest);
+    else
+      space:each(entity.x, entity.y, entity.w, entity.h, typeTest);
+    end
+    
+    return doesOverlap;
+            
+  end,
+  
+  
+  rehash = function(entity, space)
+  
+    space:update(entity, entity.x, entity.y, entity.w, entity.h);
+  
   end
+  
 }
 
 local PlayerHistory = {};
@@ -58,6 +86,8 @@ function PlayerHistory.new()
     y = 0,
     vx = 0,
     vy = 0,
+    w = 1,
+    h = 1,
     health = 0,
     damage = 0
   })
@@ -126,18 +156,14 @@ function PlayerHistory.rebuild(ph, tick, state)
 
 end
 
-function PlayerHistory.advance(ph)
+function PlayerHistory.advance(ph, space)
   
   local tickStates = ph.tickStates;
   
-  if (List.length(tickStates) >= NetConstants.MaxHistory) then  
-
+  if (List.length(tickStates) >= NetConstants.MaxHistory) then
     List.pushright(tickStates, List.popleft(tickStates)) 
-  
   else
-    
     List.pushright(tickStates, {});
-  
   end
   
   ph.tick = ph.tick + 1;
@@ -149,7 +175,11 @@ function PlayerHistory.advance(ph)
     newState[k] = v;
   end
   
-  newState.x, newState.y = EntityUtil.applyVelocity(oldState, oldState);
+  newState.x, newState.y = EntityUtil.applyVelocity(oldState, oldState);  
+    
+  if (EntityUtil.overlapsType(newState, space, EntityType.Wall)) then
+    newState.x, newState.y = oldState.x, oldState.y;
+  end
   
   newState.health = oldState.health - oldState.damage;
   newState.damage = 0;

@@ -3,6 +3,7 @@
 -- Load Scripts
 local cs = require("https://raw.githubusercontent.com/expo/share.lua/master/cs.lua")
 local client = cs.client;
+local shash = require("lib/shash")
 local Class, GameController = require("lib/game_base")()
 local List = require("lib/list")
 local EntityType, EntityUtil, NetConstants, PlayerHistory = require("common")()
@@ -72,6 +73,7 @@ function PlayController:init()
   self.timeTracker = 0;    
   client.home.playerHistory = PlayerHistory.new();
   self.playerHistory = client.home.playerHistory;
+  self.space = shash.new(NetConstants.CellSize);
   
 end
 
@@ -104,7 +106,7 @@ end
 
 function PlayController:receive(msg)
   
-  print("received");
+  print("Force Sync");
   
   PlayerHistory.rebuild(self.playerHistory, msg.tick, {
     
@@ -113,14 +115,15 @@ function PlayController:receive(msg)
     vx = 0,
     vy = 0,
     health = 1,
-    damage = 0
+    damage = 0,
+    w = 1,
+    h = 1
     
   });
 
 end
 
 function PlayController:update(dt)
-  --client.home.playerHistory = self.playerHistory;
 
     self.timeTracker = self.timeTracker + dt;
     local velX = (State.keyboard.d - State.keyboard.a)
@@ -128,16 +131,63 @@ function PlayController:update(dt)
     local ph = self.playerHistory;
     
     -- Apply updates at a fixed interval
-    
     while (self.timeTracker > NetConstants.TickInterval) do
       self.timeTracker = self.timeTracker - NetConstants.TickInterval;
       
-      PlayerHistory.advance(ph);
+      PlayerHistory.advance(ph, self.space);
       PlayerHistory.setVelocity(ph, velX, velY);
       
     end 
 end
 
+-- When a synced entity changes, update in spatial hash
+function PlayController:changed(diff)
+    local entities = client.share.entities;
+    local space = self.space;
+  --[[
+
+  if (diff.entities) then
+  
+    for uuid, entDiff in pairs(diff.entities) do
+      
+      local e = entities[k];
+    
+      if (self.space.entities[k]) then
+        if (entDiff == cs.DIFF_NIL) then
+          self.space:removeOnceWhere(function(entity) 
+            return entity.uuid == k;
+          end);
+        else
+          self.space:update(e, e.x, e.y, e.w, e.h);
+        end
+      elseif (e and entDiff ~= cs.DIFF_NIL) then
+          self.space:add(e, e.x, e.y, e.w, e.h);
+          print("wall", e.x, e.y, e.w, e.h);
+      end
+      
+    end
+  end
+  ]]
+  
+  for uuid, e in pairs(entities) do
+    space:update(e, e.x, e.y, e.w, e.h);
+  end
+  
+  for uuid, diff in pairs(diff.entities) do 
+    if (diff == cs.DIFF_NIL) then
+      space:removeByUUID(uuid);
+    end
+  end
+  
+end
+
+function client.changed(diff)
+
+  --local space = State.playController;
+
+  State.controller:changed(diff);
+
+end
 
 
 if USE_CASTLE_CONFIG then

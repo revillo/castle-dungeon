@@ -21,6 +21,7 @@ function GameController:update(dt) end
 function GameController:mousemoved(x,y) end
 function GameController:mousepressed(x,y) end
 function GameController:receive(msg) end
+function GameController:changed(diff) end
 
 
 return function() return Class, GameController end

@@ -25,18 +25,12 @@ function addEntity(entity)
   
 end
 
-function rehashEntity(entity)
-  
-  gameState.space:update(entity, entity.x, entity.y, entity.w, entity.h);
-
-end
-
 -- Initialize game map
 function loadMap()
   
   share.entities = {};
   gameState.entities = share.entities;
-  gameState.space = shash.new(1);
+  gameState.space = shash.new(NetConstants.CellSize);
   gameState.timeTracker = 0;
   gameState.tick = 0;
   
@@ -79,9 +73,9 @@ function loadMap()
     result = {};
         
     function makeRelevant(ent)
-      --if (clientId ~= ent.uuid) then
+      if (clientId ~= ent.uuid) then
         result[ent.uuid] = 1;
-      --end
+      end
     end
     
     -- Use our spatial hash to call makeRelevant on visible entities
@@ -152,18 +146,13 @@ function updatePlayers()
           -- Move player
           player.x, player.y = EntityUtil.applyVelocity(player, clientState);
           
-          rehashEntity(player)
-            
+          -- Update shash
+          EntityUtil.rehash(player, gameState.space);            
+          
           -- If the player overlaps a wall, move it back
-          local overlapsWall = false;
-          
-          space:each(player, function(entity) 
-            overlapsWall = (entity.type == EntityType.Wall);
-          end)
-          
-          if (overlapsWall) then
+          if (EntityUtil.overlapsType(player, space, EntityType.Wall)) then
             player.x, player.y = oldX, oldY;
-            rehashEntity(player);
+            EntityUtil.rehash(player, gameState.space);
           end
              
         end -- if client state             
