@@ -3,7 +3,8 @@
 local shash = require("lib/shash")
 local cs = require("https://raw.githubusercontent.com/expo/share.lua/master/cs.lua")
 local server = cs.server
-local EntityType, EntityUtil, NetConstants, PlayerHistory = require("common")()
+local mazegen = require("maze_gen")
+local EntityType, EntityUtil, GameLogic, NetConstants, PlayerHistory = require("common")()
 
 if USE_CASTLE_CONFIG then
     server.useCastleConfig()
@@ -25,6 +26,71 @@ function addEntity(entity)
   
 end
 
+addMazeWalls = function()
+  
+  local roomSize = NetConstants.RoomSize;
+  local mazeRooms = mazegen(2, 2);
+
+  
+  local wallId = 0;
+  local addWall = function(x,y,w,h, isDoor)
+    if (isDoor) then return end;
+    
+    wallId = wallId + 1;
+    
+    addEntity({
+      type = EntityType.Wall,
+      uuid = "w"..wallId,
+      x = x,
+      y = y,
+      w = w,
+      h = h 
+    });
+  end
+  
+  for k, room in pairs(mazeRooms) do
+    
+    local x,y = (room.x-1) * roomSize, (room.y-1) * roomSize;
+
+    
+    addEntity({
+        type = EntityType.Floor,
+        uuid = "f"..k,
+        x = x,
+        y = y,
+        w = roomSize,
+        h = roomSize
+    });
+    
+    local d = 4;
+    local e = (roomSize - d) * 0.5;
+    local r = roomSize - 1;
+    
+    addWall(x,y, 1, e);
+    addWall(x,y + e + d, 1, e);
+    
+    addWall(x, y, e, 1);
+    addWall(x + e + d, y, e, 1);
+    
+    addWall(x + r,y, 1, e);
+    addWall(x + r,y + e + d, 1, e);
+    
+    addWall(x, y + r, e, 1);
+    addWall(x + e + d, y + r, e, 1);
+    
+    local doors = room.doors;
+    
+    addWall(x+r,y+e,1,d,doors[1]);
+    addWall(x+e,y+r,d,1,doors[2]);
+    addWall(x,y+e,1,d,doors[3]);
+    addWall(x+e,y,d,1,doors[4]);
+    
+  end
+  
+
+end
+
+
 -- Initialize game map
 function loadMap()
   
@@ -33,10 +99,12 @@ function loadMap()
   gameState.space = shash.new(NetConstants.CellSize);
   gameState.timeTracker = 0;
   gameState.tick = 0;
+  gameState.bulletId = 0;
+  gameState.bullets = {};
   
   local space = gameState.space;
   
-  -- Add some dummy entities
+  --[[
   for i = 0,24 do
         
     addEntity({
@@ -48,7 +116,20 @@ function loadMap()
       h = 2
     })
   
-  end
+  end]]
+  
+  addMazeWalls();
+  
+  --[[
+  addEntity({
+      type = EntityType.Wall,
+      uuid = "wdfsfd",
+      x = 1,
+      y = 1,
+      w = 10,
+      h = 1
+    })
+  ]]
   
   --[[
   
@@ -96,8 +177,8 @@ function server.connect(id)
   addEntity({
     type = EntityType.Player,
     uuid = id,
-    x = 0,
-    y = 0,
+    x = 10,
+    y = 10,
     vx = 0,
     vy = 0,
     w = 1,
@@ -154,6 +235,26 @@ function updatePlayers()
             player.x, player.y = oldX, oldY;
             EntityUtil.rehash(player, gameState.space);
           end
+         
+          if (clientState.fx) then
+          
+            local uuid = "b"..gameState.bulletId;
+            addEntity({
+            
+              type = EntityType.Bullet,
+              uuid = uuid,
+              x = oldX + NetConstants.PlayerSize * 0.5,
+              y = oldY + NetConstants.PlayerSize * 0.5,
+              vx = clientState.fx,
+              vy = clientState.fy,
+              w = NetConstants.BulletSize,
+              h = NetConstants.BulletSize
+              
+            });
+            
+            gameState.bullets[uuid] = share.entities[uuid];
+            gameState.bulletId = gameState.bulletId + 1;
+          end
              
         end -- if client state             
       end -- if player history
@@ -186,6 +287,9 @@ function server.update(dt)
     gameState.tick = gameState.tick + 1;
     
     updatePlayers();
+    
+    GameLogic.updateBullets(gameState);
+    
   end
   
   share.entities["cache"] = dt;

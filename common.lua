@@ -3,29 +3,38 @@ local List = require("lib/list")
 local NetConstants = {
   TickInterval = 1.0 / 60.0,
   PlayerSpeed = 0.1,
-  ClientVisibility = 10,
+  PlayerSize = 1.0,
+  ClientVisibility = 15,
   CellSize = 1,
-  MaxHistory = 20,
+  RoomSize = 20,
+  MaxHistory = 60,
+  BulletSize = 0.5,
+  BulletSpeed = 0.5,
   StrayDistance = 0.2 -- Max units a player can stray from server before resync
 }
 
 local EntityType = {
   Player = 1,
   Wall = 2,
-  Enemy = 3
+  Enemy = 3,
+  Bullet = 4,
+  Door = 5,
+  Floor = 6
 }
 
 local EntityUtil = {
   
-  applyVelocity = function(pos, vel)
+  applyVelocity = function(pos, vel, speed)
+    
+    speed = speed or NetConstants.PlayerSpeed;
     
     local mag = vel.vx * vel.vx + vel.vy * vel.vy;
     
     if (mag > 0.0) then
       
       mag = math.sqrt(mag);
-      local x = pos.x + vel.vx * NetConstants.PlayerSpeed / mag;
-      local y = pos.y + vel.vy * NetConstants.PlayerSpeed / mag;
+      local x = pos.x + vel.vx * speed / mag;
+      local y = pos.y + vel.vy * speed / mag;
       
       return x, y;
     
@@ -49,8 +58,9 @@ local EntityUtil = {
     local doesOverlap = false;
     
     local typeTest = function(ent) 
-      doesOverlap = (ent.type == type);
-      --if(doesOverlap) then print("overlaps") end
+      if (ent.type == type) then
+        doesOverlap = true;
+      end
     end
     
     if (space:contains(entity)) then
@@ -70,6 +80,37 @@ local EntityUtil = {
   
   end
   
+}
+
+local GameLogic = {
+
+
+  updateBullets = function(gameState)
+  
+    local bullets = gameState.bullets;
+    local entities = gameState.entities;
+    local space = gameState.space;
+    
+    for uuid, bullet in pairs(bullets) do
+      
+      
+    
+      bullet.x, bullet.y = EntityUtil.applyVelocity(bullet, bullet, NetConstants.BulletSpeed);
+      
+      EntityUtil.rehash(bullet, space);
+      
+       if (EntityUtil.overlapsType(bullet, space, EntityType.Wall)) then
+           space:remove(bullet);
+           bullets[uuid] = nil;
+           entities[uuid] = nil;           
+       end
+    
+    end
+    
+  
+  end
+
+
 }
 
 local PlayerHistory = {};
@@ -128,6 +169,20 @@ function PlayerHistory.setDamage(ph, damage)
   
 end
 
+function PlayerHistory.setFire(ph, dx, dy)
+
+  local mag = dx * dx + dy * dy;
+
+  if (mag > 0.3) then
+  
+    local state = ph.tickStates[ph.tick];
+    state.fx = dx / mag;
+    state.fy = dy / mag;
+
+  end
+    
+end
+
 function PlayerHistory.getLastState(ph)
   
   return ph.tickStates[ph.tick];
@@ -175,15 +230,16 @@ function PlayerHistory.advance(ph, space)
     newState[k] = v;
   end
   
-  newState.x, newState.y = EntityUtil.applyVelocity(oldState, oldState);  
-    
+  newState.x, newState.y = EntityUtil.applyVelocity(oldState, oldState); 
+
   if (EntityUtil.overlapsType(newState, space, EntityType.Wall)) then
     newState.x, newState.y = oldState.x, oldState.y;
   end
-  
+
+  newState.fx, newState.fy = nil, nil;
   newState.health = oldState.health - oldState.damage;
   newState.damage = 0;
   
 end
 
-return function() return EntityType, EntityUtil, NetConstants, PlayerHistory end
+return function() return EntityType, EntityUtil, GameLogic, NetConstants, PlayerHistory end

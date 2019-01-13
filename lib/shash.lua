@@ -163,7 +163,7 @@ function shash:clear()
   end
 end
 
-
+--l, t, r, b
 local function overlaps(e1, e2)
   return e1[3] > e2[1] and e1[1] < e2[3] and e1[4] > e2[2] and e1[2] < e2[4]
 end
