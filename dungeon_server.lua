@@ -2,8 +2,6 @@
 
 local cs = require("https://raw.githubusercontent.com/expo/share.lua/master/cs.lua")
 local server = cs.server
-local mazegen = require("lib/maze_gen")
-local EntityType, EntityUtil, GameLogic, NetConstants, PlayerHistory = require("common")()
 
 if USE_CASTLE_CONFIG then
     server.useCastleConfig()
@@ -11,6 +9,9 @@ else
     server.enabled = true
     server.start('22122') -- Port of server
 end
+
+local mazegen = require("lib/maze_gen")
+local EntityType, EntityUtil, GameLogic, NetConstants, PlayerHistory = require("common")()
 
 local gameState = {};
 

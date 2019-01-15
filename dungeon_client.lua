@@ -3,10 +3,6 @@
 -- Load Scripts
 local cs = require("https://raw.githubusercontent.com/expo/share.lua/master/cs.lua")
 local client = cs.client;
-local Class, GameController, Game = require("lib/game_base")()
-local List = require("lib/list")
-local EntityType, EntityUtil, GameLogic, NetConstants, PlayerHistory = require("common")()
-local TileGfx = require("lib/tile_gfx")
 
 if USE_CASTLE_CONFIG then
     print("Use castle config");
@@ -15,6 +11,12 @@ else
     client.enabled = true
     client.start("localhost:22122")
 end
+
+local Class, GameController, Game = require("lib/game_base")()
+local List = require("lib/list")
+local EntityType, EntityUtil, GameLogic, NetConstants, PlayerHistory = require("common")()
+local TileGfx = require("lib/tile_gfx")
+
 
 -- Globals
 local gfx = {}

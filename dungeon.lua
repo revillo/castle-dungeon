@@ -1,3 +1,5 @@
+--castle://localhost:4000/dungeon.lua
+
 USE_CASTLE_CONFIG = true;
 local foo = require
 
