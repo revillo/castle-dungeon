@@ -196,7 +196,8 @@ function updatePlayers()
       local clientTick = 0;
     
       if (home.playerHistory) then
-         clientTick = home.playerHistory.tick
+        clientTick = home.playerHistory.tick
+        
         hadHistory = true;
         
         --Client player State
@@ -262,7 +263,7 @@ function updatePlayers()
           hadState = hadState,
           wasFar = wasFar,
           servertick = myTick,
-          clientTick = clientTick
+          clienttick = clientTick
         });
       
       end

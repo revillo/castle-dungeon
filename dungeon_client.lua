@@ -9,6 +9,7 @@ local EntityType, EntityUtil, GameLogic, NetConstants, PlayerHistory = require("
 local TileGfx = require("lib/tile_gfx")
 
 if USE_CASTLE_CONFIG then
+    print("Use castle config");
     client.useCastleConfig()
 else
     client.enabled = true

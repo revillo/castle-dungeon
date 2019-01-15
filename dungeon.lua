@@ -1,7 +1,8 @@
 USE_CASTLE_CONFIG = true;
+local foo = require
 
 if CASTLE_SERVER then
-  require('dungeon_server.lua')
+  foo('dungeon_server.lua')
 else
-  require('dungeon_client.lua')
-end
+  foo('dungeon_client.lua')
+end	
