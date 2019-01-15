@@ -6,7 +6,7 @@ local NetConstants = {
   PlayerSize = 1.0,
   ClientVisibility = 15,
   CellSize = 1,
-  RoomSize = 20,
+  RoomSize = 12.0,
   MaxHistory = 60,
   BulletSize = 0.5,
   BulletSpeed = 0.5,
@@ -53,14 +53,19 @@ local EntityUtil = {
      
   end,
   
-  overlapsType = function(entity, space, type)
+  overlapsType = function(entity, space, type, fn)
     
     local doesOverlap = false;
     
     local typeTest = function(ent) 
       if (ent.type == type) then
         doesOverlap = true;
+              
+        if (fn) then
+          fn(ent);
+        end
       end
+
     end
     
     if (space:contains(entity)) then
@@ -78,40 +83,54 @@ local EntityUtil = {
   
     space:update(entity, entity.x, entity.y, entity.w, entity.h);
   
+  end,
+  
+  
+  removeEntity = function(entity, gameState)
+  
+    gameState.space:remove(entity);
+    gameState.entitiesByType[entity.type][entity.uuid] = nil;
+    gameState.entities[entity.uuid] = nil;
+  
   end
   
 }
 
-local GameLogic = {
+local GameLogic = {};
 
-
-  updateBullets = function(gameState)
+function GameLogic.updateBullets(gameState)
   
-    local bullets = gameState.bullets;
-    local entities = gameState.entities;
+    local bullets = gameState.entitiesByType[EntityType.Bullet];
     local space = gameState.space;
     
     for uuid, bullet in pairs(bullets) do
-      
-      
-    
+     
+     if (bullet) then
       bullet.x, bullet.y = EntityUtil.applyVelocity(bullet, bullet, NetConstants.BulletSpeed);
-      
       EntityUtil.rehash(bullet, space);
       
-       if (EntityUtil.overlapsType(bullet, space, EntityType.Wall)) then
-           space:remove(bullet);
-           bullets[uuid] = nil;
-           entities[uuid] = nil;           
+     
+      local hitOnce = false;
+      
+       EntityUtil.overlapsType(bullet, space, EntityType.Wall, function()          
+          hitOnce = true;
+       end);
+       
+       
+       EntityUtil.overlapsType(bullet, space, EntityType.Enemy, function(enemy)
+          hitOnce = true;
+          EntityUtil.removeEntity(enemy, gameState);
+       end);
+       
+       
+       if (hitOnce) then
+        EntityUtil.removeEntity(bullet, gameState);
        end
     
+       
+      end
     end
-    
-  
-  end
-
-
-}
+end
 
 local PlayerHistory = {};
 
@@ -127,8 +146,8 @@ function PlayerHistory.new()
     y = 0,
     vx = 0,
     vy = 0,
-    w = 1,
-    h = 1,
+    w = NetConstants.PlayerSize,
+    h = NetConstants.PlayerSize,
     health = 0,
     damage = 0
   })
@@ -203,10 +222,23 @@ function PlayerHistory.setVelocity(ph, vx, vy)
   state.vy = vy;
 end
 
-function PlayerHistory.rebuild(ph, tick, state)
+function PlayerHistory.rebuild(ph, msg)
   
-  ph.tick = tick;
-  ph.tickStates = List.new(tick);
+  local state = {
+    
+    x = msg.x,
+    y = msg.y,
+    vx = 0,
+    vy = 0,
+    health = 1,
+    damage = 0,
+    w = NetConstants.PlayerSize,
+    h = NetConstants.PlayerSize
+    
+  }
+  
+  ph.tick = msg.tick;
+  ph.tickStates = List.new(msg.tick);
   List.pushright(ph.tickStates, state);
 
 end

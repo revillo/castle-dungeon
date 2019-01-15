@@ -11,11 +11,50 @@ local EntityType, EntityUtil, GameLogic, NetConstants, PlayerHistory = require("
 -- Globals
 
 local State = {}
-local gfx = {imgRes = 16}
+local gfx = {}
+
+QuadCache = {};
+
+TileGfx = {
+
+  imgRes = 32,
+  
+  loadImg = function(path)
+    
+    local img = love.graphics.newImage(path);
+    img:setWrap("repeat", "repeat");
+    img:setFilter("nearest", "nearest");
+    return img;
+  
+  end,
+  
+  getQuad = function(width, height)
+    
+    local key = width.."+"..height;
+    
+    if (not QuadCache[key]) then
+      QuadCache[key] = love.graphics.newQuad(
+        0,0, TileGfx.imgRes * width, TileGfx.imgRes * height, TileGfx.imgRes, TileGfx.imgRes
+      );
+    end
+    
+    return QuadCache[key];
+  
+  end,
+  
+  drawTiles = function(img, x, y, w, h, scale, flipx)
+    
+    love.graphics.setColor(1.0, 1.0, 1.0, 1.0);
+
+    love.graphics.draw(img, TileGfx.getQuad(w, h),
+        x, y, 0.0, scale * (flipx or 1.0), scale, 16, 16);
+  
+  end
+
+}
 
 gfx = {
   
-  imgRes = 16,
   tileSize = 32.0,
   offsetX = 200.0,
   offsetY = 200.0,
@@ -28,21 +67,16 @@ gfx = {
   
   end,
   
-  floorQuad = love.graphics.newQuad(0,0, gfx.imgRes * NetConstants.RoomSize, gfx.imgRes * NetConstants.RoomSize, gfx.imgRes, gfx.imgRes),
-  
-  bricksQuad = love.graphics.newQuad(0,0, gfx.imgRes * NetConstants.RoomSize, gfx.imgRes, gfx.imgRes, gfx.imgRes),
-  
-  floorImg = (function() 
-    local img = love.graphics.newImage("img/cobble.png")
-    img:setWrap("repeat", "repeat");
-    return img;
-  end)(),
-  
-  bricksImg = (function() 
-    local img = love.graphics.newImage("img/bricks.png")
-    img:setWrap("repeat", "repeat");
-    return img;
-  end)(),
+  img = {
+    fire = TileGfx.loadImg("img/orb_of_destruction.png"),
+    grass = TileGfx.loadImg("img/grass.png"),
+    wizard = TileGfx.loadImg("img/deep_elf_high_priest.png"),
+    brickdark = TileGfx.loadImg("img/brickdark.png"),
+    brick = TileGfx.loadImg("img/bricks.png"),
+    wallshadow = TileGfx.loadImg("img/wallshadow.png"),
+    cobble = TileGfx.loadImg("img/cobble.png"),
+    bat = TileGfx.loadImg("img/skeleton_bat.png")
+  },
   
   unitsToPx = function(x, y)
     
@@ -52,25 +86,20 @@ gfx = {
   
   end,
   
-  drawBorder = function()
-    
-    local edge = (NetConstants.ClientVisibility-1) * gfx.tileSize;
-    
-    love.graphics.setColor(1.0, 1.0, 1.0, 1.0);
-    
-    love.graphics.setLineWidth(gfx.tileSize* 0.1);
-    
-    love.graphics.rectangle("line", 
-      gfx.offsetX - edge, 
-      gfx.offsetY - edge,
-      edge * 2.0,
-      edge * 2.0
-    );
+  drawBasic = function(img, entity, center)
   
+    local scale = gfx.tileSize/TileGfx.imgRes;
+    local x, y = gfx.unitsToPx(entity.x - center.x, entity.y - center.y);   
+    
+    if (entity.vx and entity.vx > 0) then
+      TileGfx.drawTiles(img, x, y, entity.w, entity.h, scale, -1.0);
+    else
+      TileGfx.drawTiles(img, x, y, entity.w, entity.h, scale);
+    end
   end,
   
   applyScissor = function()
-      local edge = (NetConstants.ClientVisibility-1) * gfx.tileSize;
+     local edge = (NetConstants.ClientVisibility-1) * gfx.tileSize;
 
     love.graphics.setScissor(
       gfx.offsetX - edge, 
@@ -81,15 +110,11 @@ gfx = {
   end,
   
   clearScissor = function()
-  
     love.graphics.setScissor();
-  
   end,
   
   drawCursor = function(cursor)
-    
     love.graphics.setColor(1.0, 1.0, 1.0, 0.5);
-    
     love.graphics.setLineWidth(1.0);
     
     local x, y = gfx.unitsToPx(cursor.x + 0.5, cursor.y + 0.5);
@@ -99,75 +124,57 @@ gfx = {
     love.graphics.rectangle("fill",
       x-h*0.5, y-w*0.5, h, w 
     )
-    
+  
      love.graphics.rectangle("fill",
       x-w*0.5, y-h*0.5, w, h 
     )
-    
+  end,
   
+  drawWallBricks = function(wall, center)
+      
+      local scale = gfx.tileSize/TileGfx.imgRes;
+      local x, y = gfx.unitsToPx(wall.x - center.x, wall.y - center.y + wall.h);      
+      TileGfx.drawTiles(gfx.img.brick, x, y, wall.w, 1, scale);
+      
+      x,y = gfx.unitsToPx(wall.x - center.x, wall.y - center.y + wall.h + 0.95);
+      TileGfx.drawTiles(gfx.img.wallshadow, x, y, wall.w, 1, scale);
+
   end,
   
   drawEntity = {
   
     [EntityType.Wall] = function(wall, center) 
-      local ts = gfx.tileSize;
-    
-      love.graphics.setColor(0.8, 0.8, 0.8, 1.0);
-      love.graphics.rectangle("fill", 
-      (wall.x-center.x) * ts + gfx.offsetX, 
-      (wall.y-center.y) * ts + gfx.offsetY, 
-      ts * wall.w, ts * wall.h);
-      
+
+      gfx.drawBasic(gfx.img.brickdark, wall, center);
+
     end,
     
     [EntityType.Bullet] = function(bullet, center)
       
       local ts = gfx.tileSize;
       local x, y = gfx.unitsToPx(bullet.x - center.x, bullet.y - center.y);
+      love.graphics.setColor(1.0, 1.0, 1.0, 1.0);
+            
+      love.graphics.draw(gfx.img.fire, x, y, math.atan2(bullet.vy, bullet.vx) + math.pi * 1.5, ts * bullet.w / TileGfx.imgRes, ts * bullet.w / TileGfx.imgRes, TileGfx.imgRes/2, TileGfx.imgRes/2);
       
-      love.graphics.setColor(1.0, 0.5, 0.0, 1.0);
-      love.graphics.circle("fill", x, y,
-        ts * bullet.w);    
-    
     end,
     
     [EntityType.Player] = function(player, center)
-      local ts = gfx.tileSize;
-    
-      love.graphics.setColor(1.0, 1.0, 1.0, 1.0);
-      love.graphics.rectangle("fill", 
-        (player.x-center.x) * ts + gfx.offsetX, 
-        (player.y-center.y) * ts + gfx.offsetY, 
-        ts, ts);
+
+      gfx.drawBasic(gfx.img.wizard, player, center);
       
     end,
     
     [EntityType.Floor] = function(flr, center)
     
-      local ts = gfx.tileSize;
-      local scale = gfx.tileSize / gfx.imgRes;
-    
+      gfx.drawBasic(gfx.img.cobble, flr, center);
    
-      love.graphics.setColor(1.0, 1.0, 1.0, 1.0);
-      love.graphics.draw(gfx.floorImg, gfx.floorQuad,
-        (flr.x-center.x) * ts + gfx.offsetX, 
-        (flr.y-center.y) * ts + gfx.offsetY, 0,
-        scale, scale);
-        
-    --[[
-      love.graphics.draw(gfx.bricksImg, gfx.bricksQuad,
-        (flr.x-center.x) * ts + gfx.offsetX, 
-        (flr.y-center.y+1) * ts + gfx.offsetY, 0,
-        scale, scale);
-       ]]
-        
-        --[[
-     love.graphics.setColor(0.3, 0.3, 0.3, 1.0);
-      love.graphics.rectangle("fill", 
-      (flr.x-center.x) * ts + gfx.offsetX, 
-      (flr.y-center.y) * ts + gfx.offsetY, 
-      ts * flr.w, ts * flr.h);
-    ]]
+    end,
+    
+    [EntityType.Enemy] = function(flr, center)
+    
+      gfx.drawBasic(gfx.img.bat, flr, center);
+   
     end
   
   }
@@ -191,9 +198,7 @@ function PlayController:init()
   for k, type in pairs(EntityType) do
     self.entitiesByType[type] = {};
   end
-  
-  self.bullets = self.entitiesByType[EntityType.Bullet];
-  
+    
 end
 
 function PlayController:keypressed(k)
@@ -206,18 +211,7 @@ function PlayController:syncHistory(msg)
   
   print("Force Sync");
   
-  PlayerHistory.rebuild(self.playerHistory, msg.tick, {
-    
-    x = msg.x,
-    y = msg.y,
-    vx = 0,
-    vy = 0,
-    health = 1,
-    damage = 0,
-    w = 1,
-    h = 1
-    
-  });
+  PlayerHistory.rebuild(self.playerHistory, msg);
   
 end
 
@@ -230,34 +224,35 @@ function PlayController:drawEntitiesOfType(type)
 
 end
 
+local grassEntity = {x = -100, y = -100, w = 1000, h = 1000} 
+
 function PlayController:draw()
   
   gfx.applyScissor();
-  
   local playerState = PlayerHistory.getLastState(self.playerHistory);
-  
 
-     --[[
-  for k,v in pairs(client.share.entities or {}) do
-    
-    gfx.drawEntity[v.type](v, playerState);
-  
-  end]]
-  
+  gfx.drawBasic(gfx.img.grass,  grassEntity, playerState);
+
   self:drawEntitiesOfType(EntityType.Floor);
+  
+  -- Front Facing Wall Effects
+  for id, e in pairs(self.entitiesByType[EntityType.Wall]) do
+    gfx.drawWallBricks(e, playerState);
+  end
+  
   self:drawEntitiesOfType(EntityType.Enemy);
   self:drawEntitiesOfType(EntityType.Player);
+  
+  -- Draw Local player
+  gfx.drawEntity[EntityType.Player](playerState, playerState);
+
   self:drawEntitiesOfType(EntityType.Bullet);
   self:drawEntitiesOfType(EntityType.Wall);
   self:drawEntitiesOfType(EntityType.Door);
   
-  gfx.drawEntity[EntityType.Player](playerState, playerState);
-  
   --gfx.drawCursor(self.cursor);
   
   gfx.clearScissor();
-
-  gfx.drawBorder();
 
 end
 
@@ -283,16 +278,18 @@ function PlayController:mousemoved(x, y)
 end
 
 function PlayController:updatePlayer()
+
+    local ph = self.playerHistory;
+    PlayerHistory.advance(ph, self.space);
+
+    -- Set player movement request
     local velX = (State.keyboard.d - State.keyboard.a);
     local velY = (State.keyboard.s - State.keyboard.w);
-    local ph = self.playerHistory;
-
-    local didFire = self.fireFlag;
-    self.fireFlag = false;
-  
-    PlayerHistory.advance(ph, self.space);
     PlayerHistory.setVelocity(ph, velX, velY);
     
+    -- Set player fire request
+    local didFire = self.fireFlag;
+    self.fireFlag = false;
     if (didFire) then
       PlayerHistory.setFire(ph, self.cursor.x, self.cursor.y);
     end
@@ -304,13 +301,12 @@ function PlayController:update(dt)
    
     -- Apply updates at a fixed interval
     while (self.timeTracker > NetConstants.TickInterval) do
+    
       self.timeTracker = self.timeTracker - NetConstants.TickInterval;
        
       self:updatePlayer();
-      
-      GameLogic.updateBullets(self);
-      
-      
+      --GameLogic.updateBullets(self);
+    
     end 
 end
 
@@ -353,6 +349,7 @@ else
 end
 
 function client.load()
+
   local w, h = love.graphics.getDimensions();
   gfx.offsetX = w / 2.0;
   gfx.offsetY = h / 2.0;
@@ -393,7 +390,6 @@ function client.mousepressed(x,y)
 
   State.controller:mousepressed(x,y);
  
-
 end
 
 function client.keypressed(k)

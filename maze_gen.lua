@@ -1,7 +1,7 @@
 local List = require("lib/list")
+math.randomseed(os.time());
 
 function FYShuffle( tInput )
-  math.randomseed(os.time());
   
     local tReturn = {}
     for i = #tInput, 1, -1 do

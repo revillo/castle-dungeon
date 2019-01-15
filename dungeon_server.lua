@@ -20,16 +20,18 @@ local homes = server.homes;
 
 function addEntity(entity)
 
-  share.entities[entity.uuid] = entity;
+    share.entities[entity.uuid] = entity;
 
-  gameState.space:add(share.entities[entity.uuid], entity.x, entity.y, entity.w, entity.h);
+    gameState.space:add(share.entities[entity.uuid], entity.x, entity.y, entity.w, entity.h);
+  
+    gameState.entitiesByType[entity.type][entity.uuid] = share.entities[entity.uuid];
   
 end
 
 addMazeWalls = function()
   
   local roomSize = NetConstants.RoomSize;
-  local mazeRooms = mazegen(2, 2);
+  local mazeRooms = mazegen(5, 5);
 
   
   local wallId = 0;
@@ -48,11 +50,14 @@ addMazeWalls = function()
     });
   end
   
+  
+  addWall(0, 0, 5 * roomSize, 1);
+  addWall(-1, 0, 1, 5 * roomSize);
+  
   for k, room in pairs(mazeRooms) do
     
     local x,y = (room.x-1) * roomSize, (room.y-1) * roomSize;
 
-    
     addEntity({
         type = EntityType.Floor,
         uuid = "f"..k,
@@ -62,28 +67,45 @@ addMazeWalls = function()
         h = roomSize
     });
     
-    local d = 4;
-    local e = (roomSize - d) * 0.5;
+    
+    addEntity({
+      type = EntityType.Enemy,
+        uuid = "e"..k,
+        x = x + roomSize/2,
+        y = y + roomSize/2,
+        w = 1,
+        h = 1
+    });
+    
+    local d = 3;
+    local e = math.floor((roomSize - d) * 0.5);
     local r = roomSize - 1;
+    local t = 1.0;
+    local it = 1.0 - t;
     
-    addWall(x,y, 1, e);
-    addWall(x,y + e + d, 1, e);
+    --[[
+    addWall(x,y, t, e);
+    addWall(x,y + e + d, t, e);
     
-    addWall(x, y, e, 1);
-    addWall(x + e + d, y, e, 1);
+    addWall(x, y, e, t);
+    addWall(x + e + d, y, e, t);
+    ]]
     
-    addWall(x + r,y, 1, e);
-    addWall(x + r,y + e + d, 1, e);
+    addWall(x + r+it,y, t, e);
+    addWall(x + r+it,y + e + d, t, e+1);
     
-    addWall(x, y + r, e, 1);
-    addWall(x + e + d, y + r, e, 1);
+    addWall(x, y + r+it, e, t);
+    addWall(x + e + d, y + r+it, e, t);
     
     local doors = room.doors;
     
-    addWall(x+r,y+e,1,d,doors[1]);
-    addWall(x+e,y+r,d,1,doors[2]);
-    addWall(x,y+e,1,d,doors[3]);
-    addWall(x+e,y,d,1,doors[4]);
+    addWall(x+r+it,y+e,t,d,doors[1]);
+    addWall(x+e,y+r+it,d,t,doors[2]);
+    
+    --[[
+    addWall(x,y+e,t,d,doors[3]);
+    addWall(x+e,y,d,t,doors[4]);
+    ]]
     
   end
   
@@ -100,7 +122,11 @@ function loadMap()
   gameState.timeTracker = 0;
   gameState.tick = 0;
   gameState.bulletId = 0;
-  gameState.bullets = {};
+  gameState.entitiesByType = {};
+  
+  for k, type in pairs(EntityType) do
+    gameState.entitiesByType[type] = {};
+  end
   
   local space = gameState.space;
   
@@ -177,12 +203,12 @@ function server.connect(id)
   addEntity({
     type = EntityType.Player,
     uuid = id,
-    x = 10,
-    y = 10,
+    x = NetConstants.RoomSize * 0.5,
+    y = NetConstants.RoomSize * 0.5,
     vx = 0,
     vy = 0,
-    w = 1,
-    h = 1
+    w = NetConstants.PlayerSize,
+    h = NetConstants.PlayerSize
   });
   
 end
@@ -239,12 +265,14 @@ function updatePlayers()
           if (clientState.fx) then
           
             local uuid = "b"..gameState.bulletId;
+            gameState.bulletId = gameState.bulletId + 1;
+
             addEntity({
             
               type = EntityType.Bullet,
               uuid = uuid,
-              x = oldX + NetConstants.PlayerSize * 0.5,
-              y = oldY + NetConstants.PlayerSize * 0.5,
+              x = oldX,
+              y = oldY,
               vx = clientState.fx,
               vy = clientState.fy,
               w = NetConstants.BulletSize,
@@ -252,8 +280,6 @@ function updatePlayers()
               
             });
             
-            gameState.bullets[uuid] = share.entities[uuid];
-            gameState.bulletId = gameState.bulletId + 1;
           end
              
         end -- if client state             
