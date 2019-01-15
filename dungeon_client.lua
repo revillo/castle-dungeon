@@ -3,55 +3,20 @@
 -- Load Scripts
 local cs = require("https://raw.githubusercontent.com/expo/share.lua/master/cs.lua")
 local client = cs.client;
-local shash = require("lib/shash")
-local Class, GameController = require("lib/game_base")()
+local Class, GameController, Game = require("lib/game_base")()
 local List = require("lib/list")
 local EntityType, EntityUtil, GameLogic, NetConstants, PlayerHistory = require("common")()
+local TileGfx = require("lib/tile_gfx")
+
+if USE_CASTLE_CONFIG then
+    client.useCastleConfig()
+else
+    client.enabled = true
+    client.start("localhost:22122")
+end
 
 -- Globals
-
-local State = {}
 local gfx = {}
-
-QuadCache = {};
-
-TileGfx = {
-
-  imgRes = 32,
-  
-  loadImg = function(path)
-    
-    local img = love.graphics.newImage(path);
-    img:setWrap("repeat", "repeat");
-    img:setFilter("nearest", "nearest");
-    return img;
-  
-  end,
-  
-  getQuad = function(width, height)
-    
-    local key = width.."+"..height;
-    
-    if (not QuadCache[key]) then
-      QuadCache[key] = love.graphics.newQuad(
-        0,0, TileGfx.imgRes * width, TileGfx.imgRes * height, TileGfx.imgRes, TileGfx.imgRes
-      );
-    end
-    
-    return QuadCache[key];
-  
-  end,
-  
-  drawTiles = function(img, x, y, w, h, scale, flipx)
-    
-    love.graphics.setColor(1.0, 1.0, 1.0, 1.0);
-
-    love.graphics.draw(img, TileGfx.getQuad(w, h),
-        x, y, 0.0, scale * (flipx or 1.0), scale, 16, 16);
-  
-  end
-
-}
 
 gfx = {
   
@@ -59,31 +24,28 @@ gfx = {
   offsetX = 200.0,
   offsetY = 200.0,
   
-  pxToUnits = function(x,y)
-  
-    local ts = gfx.tileSize;
-    
-    return (x - gfx.offsetX) / ts, (y - gfx.offsetY) / ts;
-  
-  end,
-  
   img = {
     fire = TileGfx.loadImg("img/orb_of_destruction.png"),
     grass = TileGfx.loadImg("img/grass.png"),
     wizard = TileGfx.loadImg("img/deep_elf_high_priest.png"),
-    brickdark = TileGfx.loadImg("img/brickdark.png"),
-    brick = TileGfx.loadImg("img/bricks.png"),
+    walltop = TileGfx.loadImg("img/wall_top.png"),
+    torch = TileGfx.loadImg("img/torch1.png"),
+    wallfront = TileGfx.loadImg("img/wall_front.png"),
     wallshadow = TileGfx.loadImg("img/wallshadow.png"),
-    cobble = TileGfx.loadImg("img/cobble.png"),
-    bat = TileGfx.loadImg("img/skeleton_bat.png")
+    ground = TileGfx.loadImg("img/dirt.png"),
+    bat = TileGfx.loadImg("img/skeleton_bat.png"),
+    fountain = TileGfx.loadImg("img/dngn_blue_fountain.png")
   },
   
-  unitsToPx = function(x, y)
-    
+  pxToUnits = function(x,y)
     local ts = gfx.tileSize;
-    
-    return x * ts + gfx.offsetX, y * ts + gfx.offsetY;
+    return (x - gfx.offsetX) / ts, (y - gfx.offsetY) / ts;
+  end,
   
+  
+  unitsToPx = function(x, y)
+    local ts = gfx.tileSize;
+    return x * ts + gfx.offsetX, y * ts + gfx.offsetY;
   end,
   
   drawBasic = function(img, entity, center)
@@ -113,6 +75,7 @@ gfx = {
     love.graphics.setScissor();
   end,
   
+  --[[
   drawCursor = function(cursor)
     love.graphics.setColor(1.0, 1.0, 1.0, 0.5);
     love.graphics.setLineWidth(1.0);
@@ -129,23 +92,33 @@ gfx = {
       x-w*0.5, y-h*0.5, w, h 
     )
   end,
+  ]]
   
-  drawWallBricks = function(wall, center)
+  drawWallFront = function(wall, center)
       
       local scale = gfx.tileSize/TileGfx.imgRes;
       local x, y = gfx.unitsToPx(wall.x - center.x, wall.y - center.y + wall.h);      
-      TileGfx.drawTiles(gfx.img.brick, x, y, wall.w, 1, scale);
+      TileGfx.drawTiles(gfx.img.wallfront, x, y, wall.w, 1, scale);
+      
+      
+      for dx = 0, wall.w-1 do
+        if math.floor(wall.x + dx + 1) % 6 < 0.1 then
+          TileGfx.drawTiles(gfx.img.torch, x + dx * gfx.tileSize, y, 1, 1, scale);
+        elseif math.floor(wall.x + dx + wall.y) % 24 < 0.1 then
+          TileGfx.drawTiles(gfx.img.fountain, x + dx * gfx.tileSize, y, 1, 1, scale);
+        end
+      end
       
       x,y = gfx.unitsToPx(wall.x - center.x, wall.y - center.y + wall.h + 0.95);
-      TileGfx.drawTiles(gfx.img.wallshadow, x, y, wall.w, 1, scale);
-
+      TileGfx.drawTiles(gfx.img.wallshadow, x, y, wall.w, 0.9, scale);
+      
   end,
   
   drawEntity = {
   
     [EntityType.Wall] = function(wall, center) 
 
-      gfx.drawBasic(gfx.img.brickdark, wall, center);
+      gfx.drawBasic(gfx.img.walltop, wall, center);
 
     end,
     
@@ -167,7 +140,7 @@ gfx = {
     
     [EntityType.Floor] = function(flr, center)
     
-      gfx.drawBasic(gfx.img.cobble, flr, center);
+      gfx.drawBasic(gfx.img.ground, flr, center);
    
     end,
     
@@ -184,26 +157,38 @@ gfx = {
 
 local PlayController = GameController:new();
 local MenuController = GameController:new();
+local gameState = {};
 
 function PlayController:init()
 
-  self.timeTracker = 0;    
+  local w, h = love.graphics.getDimensions();
+  gfx.offsetX = w / 2.0;
+  gfx.offsetY = h / 2.0;
+  
+  love.mouse.setCursor(love.mouse.getSystemCursor("crosshair"));
   self.cursor = {x = 0, y = 0}
+
   client.home.playerHistory = PlayerHistory.new();
   self.playerHistory = client.home.playerHistory;
+  
+  --[[
   self.space = shash.new(NetConstants.CellSize);
   self.entitiesByType = {};
   self.entities = {};
+  self.timeTracker = 0;  
+
   
   for k, type in pairs(EntityType) do
     self.entitiesByType[type] = {};
   end
+  
+  ]]
+  
+  gameState = GameLogic.newState();
     
 end
 
 function PlayController:keypressed(k)
-  
-  
 
 end
 
@@ -218,7 +203,7 @@ end
 function PlayController:drawEntitiesOfType(type)
   local playerState = PlayerHistory.getLastState(self.playerHistory);
 
-  for id, e in pairs(self.entitiesByType[type]) do
+  for id, e in pairs(gameState.entitiesByType[type]) do
     gfx.drawEntity[type](e, playerState);
   end
 
@@ -226,18 +211,22 @@ end
 
 local grassEntity = {x = -100, y = -100, w = 1000, h = 1000} 
 
+function PlayController:resize(w, h)
+    gfx.offsetX = w / 2.0;
+    gfx.offsetY = h / 2.0;
+end
+
 function PlayController:draw()
-  
   gfx.applyScissor();
+  
   local playerState = PlayerHistory.getLastState(self.playerHistory);
 
   gfx.drawBasic(gfx.img.grass,  grassEntity, playerState);
-
   self:drawEntitiesOfType(EntityType.Floor);
   
   -- Front Facing Wall Effects
-  for id, e in pairs(self.entitiesByType[EntityType.Wall]) do
-    gfx.drawWallBricks(e, playerState);
+  for id, e in pairs(gameState.entitiesByType[EntityType.Wall]) do
+    gfx.drawWallFront(e, playerState);
   end
   
   self:drawEntitiesOfType(EntityType.Enemy);
@@ -251,9 +240,8 @@ function PlayController:draw()
   self:drawEntitiesOfType(EntityType.Door);
   
   --gfx.drawCursor(self.cursor);
-  
+ 
   gfx.clearScissor();
-
 end
 
 function PlayController:receive(msg)
@@ -273,18 +261,17 @@ function PlayController:mousemoved(x, y)
   local offset = gfx.tileSize * NetConstants.PlayerSize * 0.5;
   
   self.cursor.x, self.cursor.y = gfx.pxToUnits(x - offset, y - offset);
-
   
 end
 
 function PlayController:updatePlayer()
 
     local ph = self.playerHistory;
-    PlayerHistory.advance(ph, self.space);
+    PlayerHistory.advance(ph, gameState.space);
 
     -- Set player movement request
-    local velX = (State.keyboard.d - State.keyboard.a);
-    local velY = (State.keyboard.s - State.keyboard.w);
+    local velX = (Game.keyboard.d - Game.keyboard.a);
+    local velY = (Game.keyboard.s - Game.keyboard.w);
     PlayerHistory.setVelocity(ph, velX, velY);
     
     -- Set player fire request
@@ -297,15 +284,15 @@ end
 
 function PlayController:update(dt)
 
-    self.timeTracker = self.timeTracker + dt;
+    gameState.timeTracker = gameState.timeTracker + dt;
    
     -- Apply updates at a fixed interval
-    while (self.timeTracker > NetConstants.TickInterval) do
+    while (gameState.timeTracker > NetConstants.TickInterval) do
     
-      self.timeTracker = self.timeTracker - NetConstants.TickInterval;
+      gameState.timeTracker = gameState.timeTracker - NetConstants.TickInterval;
        
       self:updatePlayer();
-      --GameLogic.updateBullets(self);
+      GameLogic.updateBullets(gameState);
     
     end 
 end
@@ -313,18 +300,18 @@ end
 -- When a synced entity changes, update in spatial hash
 function PlayController:changed(diff)
     local entities = client.share.entities;
-    local space = self.space;
+    local space = gameState.space;
   
   for uuid, e in pairs(entities) do
     EntityUtil.rehash(e, space);
-    self.entitiesByType[e.type][e.uuid] = e;
+    gameState.entitiesByType[e.type][e.uuid] = e;
   end
   
   --Remove entity if no longer syncing
   for uuid, diff in pairs(diff.entities) do 
     if (diff == cs.DIFF_NIL) then
       space:removeByUUID(uuid);
-      for k, ents in pairs(self.entitiesByType) do
+      for k, ents in pairs(gameState.entitiesByType) do
         ents[uuid] = nil;
       end
     end
@@ -332,89 +319,6 @@ function PlayController:changed(diff)
 
 end
 
-function client.changed(diff)
-
-  --local space = State.playController;
-
-  State.controller:changed(diff);
-
-end
-
-
-if USE_CASTLE_CONFIG then
-    client.useCastleConfig()
-else
-    client.enabled = true
-    client.start("localhost:22122")
-end
-
-function client.load()
-
-  local w, h = love.graphics.getDimensions();
-  gfx.offsetX = w / 2.0;
-  gfx.offsetY = h / 2.0;
-  
-  love.mouse.setCursor(love.mouse.getSystemCursor("crosshair"));
-    
-  State = {
-    controller = PlayController:new(),
-    keyboard = {
-      w = 0,
-      a = 0,
-      s = 0,
-      d = 0
-    };
-  }
-  
-end
-
-function client.receive(msg)
-  
-  State.controller:receive(msg);
-
-end
-
-function client.keyreleased(k)
-  
-  State.keyboard[k] = 0;
-  
-end
-
-function client.mousemoved(x, y)
-
-  State.controller:mousemoved(x,y);
-
-end
-
-function client.mousepressed(x,y)
-
-  State.controller:mousepressed(x,y);
- 
-end
-
-function client.keypressed(k)
-  
-  State.keyboard[k] = 1;
-  State.controller:keypressed(k);
-
-end
-
-function client.draw()
-
-  State.controller:draw()
-
-end
-
-function client.resize()
-  
-    local w, h = love.graphics.getDimensions();
-    gfx.offsetX = w / 2.0;
-    gfx.offsetY = h / 2.0;
-
-end
-
-function client.update(dt)
- 
-   State.controller:update(dt);
-  
-end
+local playController = PlayController:new();
+Game.setController(playController);
+Game.run(client);

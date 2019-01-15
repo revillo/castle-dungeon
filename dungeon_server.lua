@@ -1,9 +1,8 @@
 --castle://localhost:4000/dungeon_server.lua
 
-local shash = require("lib/shash")
 local cs = require("https://raw.githubusercontent.com/expo/share.lua/master/cs.lua")
 local server = cs.server
-local mazegen = require("maze_gen")
+local mazegen = require("lib/maze_gen")
 local EntityType, EntityUtil, GameLogic, NetConstants, PlayerHistory = require("common")()
 
 if USE_CASTLE_CONFIG then
@@ -28,16 +27,29 @@ function addEntity(entity)
   
 end
 
-addMazeWalls = function()
+createMaze = function(mazeWidth, mazeHeight)
   
   local roomSize = NetConstants.RoomSize;
-  local mazeRooms = mazegen(5, 5);
+  local mazeRooms = mazegen(mazeWidth, mazeHeight);
 
-  
   local wallId = 0;
   local addWall = function(x,y,w,h, isDoor)
-    if (isDoor) then return end;
-    
+    if (isDoor) then 
+      
+      wallId = wallId + 1;
+   
+      addEntity({
+        type = EntityType.Enemy,
+        uuid = "e"..wallId,
+        x = x + w * 0.5 - 0.5,
+        y = y + h * 0.5,
+        w = 1,
+        h = 1
+      });
+      return;
+
+    end
+
     wallId = wallId + 1;
     
     addEntity({
@@ -48,12 +60,11 @@ addMazeWalls = function()
       w = w,
       h = h 
     });
-  end
-  
-  
-  addWall(0, 0, 5 * roomSize, 1);
-  addWall(-1, 0, 1, 5 * roomSize);
-  
+  end    
+    
+  addWall(0, 0, mazeWidth * roomSize, 1);
+  addWall(-1, 0, 1, mazeHeight * roomSize);
+
   for k, room in pairs(mazeRooms) do
     
     local x,y = (room.x-1) * roomSize, (room.y-1) * roomSize;
@@ -65,16 +76,6 @@ addMazeWalls = function()
         y = y,
         w = roomSize,
         h = roomSize
-    });
-    
-    
-    addEntity({
-      type = EntityType.Enemy,
-        uuid = "e"..k,
-        x = x + roomSize/2,
-        y = y + roomSize/2,
-        w = 1,
-        h = 1
     });
     
     local d = 3;
@@ -117,61 +118,13 @@ end
 function loadMap()
   
   share.entities = {};
+  gameState = GameLogic.newState();
   gameState.entities = share.entities;
-  gameState.space = shash.new(NetConstants.CellSize);
-  gameState.timeTracker = 0;
-  gameState.tick = 0;
-  gameState.bulletId = 0;
-  gameState.entitiesByType = {};
-  
-  for k, type in pairs(EntityType) do
-    gameState.entitiesByType[type] = {};
-  end
+
   
   local space = gameState.space;
   
-  --[[
-  for i = 0,24 do
-        
-    addEntity({
-      type = EntityType.Wall,
-      uuid = "w"..i,
-      x = (math.floor(i / 5)-2) * 5 + 2,
-      y = ((i % 5)-2) * 5 + 2,
-      w = 2,
-      h = 2
-    })
-  
-  end]]
-  
-  addMazeWalls();
-  
-  --[[
-  addEntity({
-      type = EntityType.Wall,
-      uuid = "wdfsfd",
-      x = 1,
-      y = 1,
-      w = 10,
-      h = 1
-    })
-  ]]
-  
-  --[[
-  
-  for i = 1, 10 do
-    
-    local enemy = {
-      type = EntityType.Enemy,
-      uuid = 100 + id
-    }
-    
-    space:add(enemy, 2, i, 1, 1);
-    entities[enemy.uuid] = enemy;
-  
-  end
-  
-  ]]
+  createMaze(7, 7);
   
   -- A client only gets updates for nearby entities
   share.entities:__relevance(function(ents, clientId)

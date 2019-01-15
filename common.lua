@@ -1,4 +1,5 @@
 local List = require("lib/list")
+local shash = require("lib/shash")
 
 local NetConstants = {
   TickInterval = 1.0 / 60.0,
@@ -97,6 +98,24 @@ local EntityUtil = {
 }
 
 local GameLogic = {};
+
+function GameLogic.newState()
+   local gameState = {};
+   
+  gameState.entities = {};
+  gameState.space = shash.new(NetConstants.CellSize);
+  gameState.timeTracker = 0;
+  gameState.tick = 0;
+  gameState.bulletId = 0;
+  gameState.entitiesByType = {};
+    
+  for k, type in pairs(EntityType) do
+    gameState.entitiesByType[type] = {};
+  end
+  
+  return gameState;
+
+end
 
 function GameLogic.updateBullets(gameState)
   
