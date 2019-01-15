@@ -189,17 +189,26 @@ function updatePlayers()
       --Server player state
       local player = share.entities[id];
       local shouldSyncClient = true;
+      local hadHistory = false;
+      local hadState = false;
+      local wasFar = false;
     
       if (home.playerHistory) then
+        
+        hadHistory = true;
         
         --Client player State
         local clientState = PlayerHistory.getState(home.playerHistory, tick);
         
         if (clientState) then
           
+          hadState = true;
+          
           --Most likely don't need to sync, unless client is too far from server state
           
           shouldSyncClient = EntityUtil.distanceSquared(player, clientState) > NetConstants.StrayDistance;
+          
+          wasFar = shouldSyncClient;
           
           local oldX, oldY = player.x, player.y;
           
@@ -246,8 +255,10 @@ function updatePlayers()
           
           tick = tick,
           x = player.x,
-          y = player.y
-        
+          y = player.y,
+          hadHistory = hadHistory,
+          hadState = hadState,
+          wasFar = wasFar
         });
       
       end

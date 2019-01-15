@@ -195,6 +195,9 @@ end
 function PlayController:syncHistory(msg)
   
   print("Force Sync");
+  print("Had History", msg.hadHistory);
+  print("Had State", msg.hadState);
+  print("Was Far", msg.wasFar);
   
   PlayerHistory.rebuild(self.playerHistory, msg);
   

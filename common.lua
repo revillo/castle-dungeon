@@ -8,10 +8,10 @@ local NetConstants = {
   ClientVisibility = 15,
   CellSize = 1,
   RoomSize = 12.0,
-  MaxHistory = 60,
+  MaxHistory = 120,
   BulletSize = 0.5,
   BulletSpeed = 0.5,
-  StrayDistance = 0.2 -- Max units a player can stray from server before resync
+  StrayDistance = 2.0 -- Max units a player can stray from server before resync
 }
 
 local EntityType = {
