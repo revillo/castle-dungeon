@@ -192,9 +192,11 @@ function updatePlayers()
       local hadHistory = false;
       local hadState = false;
       local wasFar = false;
+      local myTick = tick;
+      local clientTick = 0;
     
       if (home.playerHistory) then
-        
+         clientTick = home.playerHistory.tick
         hadHistory = true;
         
         --Client player State
@@ -258,7 +260,9 @@ function updatePlayers()
           y = player.y,
           hadHistory = hadHistory,
           hadState = hadState,
-          wasFar = wasFar
+          wasFar = wasFar,
+          servertick = myTick,
+          clientTick = clientTick
         });
       
       end

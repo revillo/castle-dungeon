@@ -198,6 +198,7 @@ function PlayController:syncHistory(msg)
   print("Had History", msg.hadHistory);
   print("Had State", msg.hadState);
   print("Was Far", msg.wasFar);
+  print("Ticks", msg.servertick, msg.clienttick);
   
   PlayerHistory.rebuild(self.playerHistory, msg);
   
