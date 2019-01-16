@@ -256,8 +256,11 @@ function PlayerHistory.rebuild(ph, msg)
     
   }
   
-  ph.tick = msg.tick;
-  ph.tickStates = List.new(msg.tick);
+  print("Ping", msg.ping);
+  
+  ph.tick = msg.tick + math.ceil((msg.ping/1000.0) / NetConstants.TickInterval) + 1;
+  
+  ph.tickStates = List.new(ph.tick);
   List.pushright(ph.tickStates, state);
 
 end

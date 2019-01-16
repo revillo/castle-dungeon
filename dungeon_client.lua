@@ -174,6 +174,8 @@ function PlayController:init()
   client.home.playerHistory = PlayerHistory.new();
   self.playerHistory = client.home.playerHistory;
   
+  self.syncMsg = nil;
+  
   --[[
   self.space = shash.new(NetConstants.CellSize);
   self.entitiesByType = {};
@@ -253,8 +255,9 @@ end
 
 function PlayController:receive(msg)
   
-  self:syncHistory(msg);
-
+  --self:syncHistory(msg);
+  self.syncMsg = msg;
+  
 end
 
 function PlayController:mousepressed(x, y)
@@ -272,6 +275,11 @@ function PlayController:mousemoved(x, y)
 end
 
 function PlayController:updatePlayer()
+
+    if (self.syncMsg) then
+      self:syncHistory(self.syncMsg);
+      self.syncMsg = nil;
+    end
 
     local ph = self.playerHistory;
     PlayerHistory.advance(ph, gameState.space);

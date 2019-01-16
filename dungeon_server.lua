@@ -265,7 +265,8 @@ function updatePlayers()
           hadState = hadState,
           wasFar = wasFar,
           servertick = myTick,
-          clienttick = clientTick
+          clienttick = clientTick,
+          ping = server.getPing(id)
         });
       
       end
