@@ -11,7 +11,7 @@ local NetConstants = {
   MaxHistory = 60,
   BulletSize = 0.5,
   BulletSpeed = 0.5,
-  StrayDistance = 0.2 -- Max units a player can stray from server before resync
+  StrayDistance = 2.0 -- Max units a player can stray from server before resync
 }
 
 local EntityType = {
@@ -209,6 +209,8 @@ end
 
 function PlayerHistory.setFire(ph, dx, dy)
 
+  if (not dx or not dy) then return end;
+
   local mag = dx * dx + dy * dy;
 
   if (mag > 0.3) then
@@ -241,7 +243,7 @@ function PlayerHistory.setVelocity(ph, vx, vy)
   state.vy = vy;
 end
 
-function PlayerHistory.rebuild(ph, msg)
+function PlayerHistory.rebuild(ph, msg, space)
   
   local state = {
     
@@ -256,10 +258,40 @@ function PlayerHistory.rebuild(ph, msg)
     
   }
   
-  ph.tick = msg.tick;
+  print("Ping", msg.ping);
+  
+  local newTick = msg.tick + math.ceil((msg.ping/1000.0) / NetConstants.TickInterval);
+  
+  local oldStates = ph.tickStates;
+  local oldTick = ph.tick;
+  
   ph.tickStates = List.new(msg.tick);
   List.pushright(ph.tickStates, state);
+  ph.tick = msg.tick;
+  
+  for tick = msg.tick, newTick do
+    
+    PlayerHistory.advance(ph, space);
+    local oldState = oldStates[oldTick - (newTick - tick)];
+    if (oldState) then
+      PlayerHistory.setVelocity(ph, oldState.vx, oldState.vy);
+      PlayerHistory.setFire(ph, oldState.fx, oldState.fy);
+    end
+    
+  end
+  
+  --[[
+  local finished = false;
+  while (not finished) do
+    if (List.length(newStates
+    local s = List.popright(ph.tickStates);
+    List.pushleft(newStates, s);
+  end
 
+  
+  ph.tickStates = List.new(ph.tick);
+  List.pushright(ph.tickStates, state);
+  ]]
 end
 
 function PlayerHistory.advance(ph, space)

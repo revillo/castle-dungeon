@@ -1,16 +1,19 @@
 --castle://localhost:4000/dungeon_client.lua
 
--- Load Scripts
-local cs = require("https://raw.githubusercontent.com/expo/share.lua/master/cs.lua")
-local client = cs.client;
 local Class, GameController, Game = require("lib/game_base")()
 local List = require("lib/list")
 local EntityType, EntityUtil, GameLogic, NetConstants, PlayerHistory = require("common")()
 local TileGfx = require("lib/tile_gfx")
 
+-- Load Scripts
+local cs = require("cs")
+local client = cs.client;
+
 if USE_CASTLE_CONFIG then
+    print("Use castle config");
     client.useCastleConfig()
 else
+  print("Connect to local host");
     client.enabled = true
     client.start("localhost:22122")
 end
@@ -171,6 +174,8 @@ function PlayController:init()
   client.home.playerHistory = PlayerHistory.new();
   self.playerHistory = client.home.playerHistory;
   
+  self.syncMsg = nil;
+  
   --[[
   self.space = shash.new(NetConstants.CellSize);
   self.entitiesByType = {};
@@ -195,8 +200,12 @@ end
 function PlayController:syncHistory(msg)
   
   print("Force Sync");
+  print("Had History", msg.hadHistory);
+  print("Had State", msg.hadState);
+  print("Was Far", msg.wasFar);
+  print("Ticks", msg.servertick, msg.clienttick);
   
-  PlayerHistory.rebuild(self.playerHistory, msg);
+  PlayerHistory.rebuild(self.playerHistory, msg, gameState.space);
   
 end
 
@@ -246,8 +255,9 @@ end
 
 function PlayController:receive(msg)
   
-  self:syncHistory(msg);
-
+  --self:syncHistory(msg);
+  self.syncMsg = msg;
+  
 end
 
 function PlayController:mousepressed(x, y)
@@ -265,6 +275,11 @@ function PlayController:mousemoved(x, y)
 end
 
 function PlayController:updatePlayer()
+
+    if (self.syncMsg) then
+      self:syncHistory(self.syncMsg);
+      self.syncMsg = nil;
+    end
 
     local ph = self.playerHistory;
     PlayerHistory.advance(ph, gameState.space);

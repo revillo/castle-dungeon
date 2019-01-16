@@ -1,9 +1,10 @@
 --castle://localhost:4000/dungeon_server.lua
 
-local cs = require("https://raw.githubusercontent.com/expo/share.lua/master/cs.lua")
-local server = cs.server
 local mazegen = require("lib/maze_gen")
 local EntityType, EntityUtil, GameLogic, NetConstants, PlayerHistory = require("common")()
+
+local cs = require("cs")
+local server = cs.server
 
 if USE_CASTLE_CONFIG then
     server.useCastleConfig()
@@ -11,6 +12,7 @@ else
     server.enabled = true
     server.start('22122') -- Port of server
 end
+
 
 local gameState = {};
 
@@ -161,7 +163,8 @@ function server.connect(id)
     vx = 0,
     vy = 0,
     w = NetConstants.PlayerSize,
-    h = NetConstants.PlayerSize
+    h = NetConstants.PlayerSize,
+    ping = 1000
   });
   
 end
@@ -189,17 +192,38 @@ function updatePlayers()
       --Server player state
       local player = share.entities[id];
       local shouldSyncClient = true;
-    
+      local hadHistory = false;
+      local hadState = false;
+      local wasFar = false;
+      local myTick = tick;
+      local clientTick = 0;
+      --local ping = 0;
+      
       if (home.playerHistory) then
+        clientTick = home.playerHistory.tick
+        
+        hadHistory = true;
         
         --Client player State
         local clientState = PlayerHistory.getState(home.playerHistory, tick);
         
         if (clientState) then
           
+          hadState = true;
+          
           --Most likely don't need to sync, unless client is too far from server state
           
           shouldSyncClient = EntityUtil.distanceSquared(player, clientState) > NetConstants.StrayDistance;
+          
+          if (tick % 100 == 0) then
+            
+            if (math.abs(server.getPing(id) - player.ping) > 50) then
+              player.ping = server.getPing(id);
+              shouldSyncClient = true;
+            end            
+          end
+          
+          wasFar = shouldSyncClient;
           
           local oldX, oldY = player.x, player.y;
           
@@ -239,15 +263,19 @@ function updatePlayers()
       end -- if player history
       
       
-      
       if (shouldSyncClient) then
         
         server.send(id, {
           
           tick = tick,
           x = player.x,
-          y = player.y
-        
+          y = player.y,
+          hadHistory = hadHistory,
+          hadState = hadState,
+          wasFar = wasFar,
+          servertick = myTick,
+          clienttick = clientTick,
+          ping = server.getPing(id)
         });
       
       end
