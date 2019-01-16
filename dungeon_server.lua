@@ -1,6 +1,9 @@
 --castle://localhost:4000/dungeon_server.lua
 
-local cs = require("https://raw.githubusercontent.com/expo/share.lua/master/cs.lua")
+local mazegen = require("lib/maze_gen")
+local EntityType, EntityUtil, GameLogic, NetConstants, PlayerHistory = require("common")()
+
+local cs = require("cs")
 local server = cs.server
 
 if USE_CASTLE_CONFIG then
@@ -10,8 +13,6 @@ else
     server.start('22122') -- Port of server
 end
 
-local mazegen = require("lib/maze_gen")
-local EntityType, EntityUtil, GameLogic, NetConstants, PlayerHistory = require("common")()
 
 local gameState = {};
 
