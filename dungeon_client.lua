@@ -2,7 +2,7 @@
 
 local Class, GameController, Game = require("lib/game_base")()
 local List = require("lib/list")
-local EntityType, EntityUtil, GameLogic, NetConstants, PlayerHistory = require("common")()
+local EntityType, EntityUtil, GameLogic, NetConstants, PlayerHistory = require("dungeon_common")()
 local TileGfx = require("lib/tile_gfx")
 
 -- Load Scripts

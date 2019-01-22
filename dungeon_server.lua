@@ -1,7 +1,7 @@
 --castle://localhost:4000/dungeon_server.lua
 
 local mazegen = require("lib/maze_gen")
-local EntityType, EntityUtil, GameLogic, NetConstants, PlayerHistory = require("common")()
+local EntityType, EntityUtil, GameLogic, NetConstants, PlayerHistory = require("dungeon_common")()
 
 local cs = require("cs")
 local server = cs.server
