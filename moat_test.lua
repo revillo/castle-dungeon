@@ -7,7 +7,7 @@ local GameEntities = {
 }
 
 local GameConstants = {
-  PlayerSpeed = 10
+  PlayerSpeed = 1
 }
 
 local MyGame = Moat:new(
@@ -15,31 +15,66 @@ local MyGame = Moat:new(
   GameConstants
 );
 
-function MyGame:applyPlayerInput(newState, oldState, input)
+function MyGame:applyPlayerInput(state, input)
   
   if (input == nil) then return end;
   
   if (input.w) then
-    newState.y = oldState.y + GameConstants.PlayerSpeed
-    print("moved y up");
+    state.y = state.y + GameConstants.PlayerSpeed
+    print("apply y up");
   end
   
 end
 
-function MyGame:keypressed(key)
+
+function MyGame:clientKeyPressed(key)
+    print("press", key);
    self:setPlayerInput({
-     [key] = 1.0
+     [key] = true
    });
 end
 
-function MyGame:draw() 
-  
-  local player = self:getPlayerState();
-
-  love.graphics.rectangle("fill", player.x, player.y, 100, 100);
+function MyGame:clientKeyReleased(key)
+   self:setPlayerInput({
+     [key] = false
+   });
 end
 
 
+local tileSize = 10.0;
+
+function drawSquare(e)
+  love.graphics.rectangle("fill", e.x * tileSize, e.y * tileSize, e.w * tileSize, e.h * tileSize);
+end
+
+function drawFood(food) 
+  love.graphics.setColor(1.0, 0.0, 0.0, 1.0);
+  drawSquare(food);
+end
+
+function MyGame:clientDraw() 
+  local player = self:getPlayerState();
+  love.graphics.setColor(1.0, 1.0, 1.0, 1.0);
+  drawSquare(player);
+  
+  self:eachEntityOfType(GameEntities.Food, drawFood);
+end
+
+function MyGame:serverInitWorld(gameState)
+
+  for x = 1, 100 do
+    
+    local x = math.random() * 100.0;
+    local y = math.random() * 100.0;
+    local size = 0.3;
+    
+    self:spawnEntity(self.EntityTypes.Food,
+      x, y, size, size
+    );
+    
+  end
+
+end
 
 MyGame:run();
 

@@ -5,19 +5,30 @@ local List = require("lib/list")
 local PlayerHistory = {};
 local Moat = {};
 
+local Utils = {};
+
+function Utils.copyInto(toTable, fromTable)
+  
+  for k, v in pairs(fromTable) do
+    toTable[k] = v;
+  end  
+  
+end
+
 function PlayerHistory.new()
   
   local ph =  {
     tick = 0,
-    tickStates = List.new()
+    inputHistory = List.new(),
+    state = {
+      x = 0,
+      y = 0,
+      w = 1,
+      h = 1
+    }
   }
  
-  List.pushright(ph.tickStates, {
-    x = 0,
-    y = 0,
-    w = 1,
-    h = 1
-  })
+  List.pushright(ph.inputHistory, nil);
   
   return ph;
  
@@ -25,53 +36,58 @@ end
 
 
 function PlayerHistory.getLastState(ph)
-  return ph.tickStates[ph.tick];
+  return ph.state;
 end
 
-function PlayerHistory.getState(ph, tick)
-  tick = tick or ph.tick;
-  return ph.tickStates[tick];
+function PlayerHistory.getInput(ph, tick)
+  return ph.inputHistory[tick];
+end
+
+function PlayerHistory.updateInput(ph, input)
+
+  if (input) then
+    ph.inputHistory[ph.tick] = ph.inputHistory[ph.tick] or {};
+    Moat.Utils.copyInto(ph.inputHistory[ph.tick], input);
+  end
+  
 end
 
 function PlayerHistory.rebuild(ph, state, tick, moat)
-  
   local ping = cs.client.getPing();
   
   local newTick = tick + math.ceil((ping/1000.0) / moat.Constants.TickInterval);
-  
-  local oldStates = ph.tickStates;
+ 
   local oldTick = ph.tick;
-  
-  ph.tickStates = List.new(tick);
-  List.pushright(ph.tickStates, state);
   ph.tick = tick;
+  local oldHistory = ph.inputHistory;
+  ph.inputHistory = List.new(tick);
+  List.pushright(ph.inputHistory, nil);
+
   
-  for t = tick, newTick do
+  ph.state = state;
+   for t = tick, newTick do
+    
+    local oldInput = oldHistory[oldTick - (newTick - t)];
+    
+    ph.inputHistory[ph.input] = oldInput;
     
     PlayerHistory.advance(ph, moat);
-    local oldState = oldStates[oldTick - (newTick - t)];
-    if (oldState) then
-      local newState = PlayerHistory.getLastState(ph);
-      newState.input = oldState.input;
-    end
     
   end
+  
 end
 
 function PlayerHistory.advance(ph, moat)
   
-  local tickStates = ph.tickStates;
+  local inputHistory = ph.inputHistory;  
+
+  moat:applyPlayerInput(ph.state, inputHistory[ph.tick]);
   
-  if (List.length(tickStates) >= moat.Constants.MaxHistory) then
-    List.popleft(tickStates) 
-  end
-  
-  List.pushright(tickStates, {});
+  List.pushright(inputHistory, nil);
   ph.tick = ph.tick + 1;
-  
-  local oldState = ph.tickStates[ph.tick-1];
-  
-  moat:advancePlayer(ph.tickStates[ph.tick], oldState);
+  if (List.length(inputHistory) >= moat.Constants.MaxHistory) then
+    List.popleft(inputHistory) 
+  end
   
 end
 
@@ -93,9 +109,13 @@ function Moat:initClient()
     ---
   end
   
-  function self:keypressed()
+  function self:clientKeyPressed(key) end
   
-  end
+  function self:clientKeyReleased(key) end
+  
+  function self:clientMousePressed() end
+  
+  function self:clientMouseMoved() end
   
   function self:getPlayerState()
   
@@ -103,22 +123,29 @@ function Moat:initClient()
     
   end
   
+  function self:clientTick(gameState)
+    
+  end
+  
   --Client Tick
   function self:advanceGameState()
     PlayerHistory.advance(ph, self); 
-    
-   
+    self:clientTick(self.gameState);
   end
   
   function self:setPlayerInput(input)
   
+  --[[
     local playerState = PlayerHistory.getLastState(ph);
     playerState.input = playerState.input or {};
     
     for k,v in pairs(input) do
       playerState.input[k] = v;
     end
+  ]]
   
+      
+    PlayerHistory.updateInput(ph, input);
   end
   
   local lastSyncPing = self.ping;
@@ -167,7 +194,7 @@ function Moat:initClient()
     end
   end
     
-  function self:draw()
+  function self:clientDraw()
   
   end
   
@@ -197,7 +224,7 @@ function Moat:initServer()
         uuid = data.uuid;
       else
         self.uuidTracker = self.uuidTracker + 1;
-        uuid = self.uuidTracker;
+        uuid = "e"..self.uuidTracker;
       end
       
       share.entities[uuid] = {
@@ -223,6 +250,10 @@ function Moat:initServer()
     
     end
     
+    function self:serverInitWorld()
+      
+    end
+    
     function self:updateAllPlayers()
       
       local tick = gameState.tick;
@@ -233,6 +264,8 @@ function Moat:initServer()
             --Server player state
           local player = share.entities[id];
           if (home.playerHistory) then
+          
+          --[[
             local clientState = PlayerHistory.getState(home.playerHistory, tick);
             if (clientState) then
               clientState.x, clientState.y = player.x, player.y;
@@ -242,18 +275,33 @@ function Moat:initServer()
               self:rehashEntity(player);
               --print(player.y);
             end --if client state
+            ]]
+            
+            local clientInput = PlayerHistory.getInput(home.playerHistory, tick);
+            self:applyPlayerInput(player, clientInput);
+            self:rehashEntity(player);
+
+            
           end -- if player history
       end -- each player
     end -- updateAllPlayers
     
     function self:advanceGameState() 
       self:updateAllPlayers();
+      self:serverTick(self.gameState);
+    end
+    
+    function self:serverTick()
+      
     end
     
     function self:spawnNewPlayer(id)
       
+      local x,y = 0, 0;
+      local width, height = 1, 1;
+      
       self:spawnEntity(self.EntityTypes.Player, 
-        0, 0, 1, 1, {uuid = id}
+        x, y, width, height, {uuid = id}
       );
     
     end
@@ -269,7 +317,6 @@ function Moat:initGameState()
     
   for name, value in pairs(self.EntityTypes) do
     gameState.entitiesByType[value] = {};
-    print("ebt", name, value);
   end
  
   
@@ -282,7 +329,7 @@ function Moat:initCommon()
   local gameState = self.gameState;
   local space = gameState.space;
   
-  
+  --[[
   function self:advancePlayer(newState, oldState)
     
     newState.x = oldState.x;
@@ -295,8 +342,10 @@ function Moat:initCommon()
     self:applyPlayerInput(newState, oldState, oldState.input);
     
   end
+  ]]
   
-  function self:applyPlayerInput(newState, oldState, input)
+  
+  function self:applyPlayerInput(player, input)
     
   end
   
@@ -398,6 +447,8 @@ function Moat:runServer()
       self:update(dt);
     end
     
+    self:serverInitWorld(self.gameState);
+    
     if USE_CASTLE_CONFIG then
       server.useCastleConfig()
     else
@@ -423,7 +474,19 @@ function Moat:runClient()
   self.keyboard = {};
   function client.keypressed(key)
     self.keyboard[key] = 1.0;
-    self:keypressed(key);
+    self:clientKeyPressed(key);
+  end
+  
+  function client.keyreleased(key)
+    self:clientKeyReleased(key);
+  end
+  
+  function client.mousepressed()
+    self:clientMousePressed();
+  end
+  
+  function client.mousemoved(x, y)
+    self:clientMouseMoved(x, y);
   end
   
   function client.changed(diff)
@@ -432,7 +495,7 @@ function Moat:runClient()
   
   function client.draw()
     --print("Drawing");
-    self:draw();
+    self:clientDraw();
   end
   
   function client.load()
@@ -458,4 +521,7 @@ function Moat:run()
    end
 
 end
+
+Moat.Utils = Utils;
+
 return Moat;
