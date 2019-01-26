@@ -79,6 +79,7 @@ function shash:add(obj, x, y, w, h)
   -- [1] = left, [2] = top, [3] = right, [4] = bottom, [5] = object
   local e = { x, y, x + w, y + h, obj }
   -- Add to main entities table
+  
   self.entities[obj.uuid] = e
   -- Add to cells
   each_overlapping_cell(self, e, add_entity_to_cell, e)
@@ -122,6 +123,10 @@ end
 
 function shash:update(obj, x, y, w, h)
   -- Get entity from obj
+  
+  assert(obj.uuid ~= nil, "Shashing without uuid");
+  
+  
   local e = self.entities[obj.uuid]
   
   if (not e) then

@@ -10,8 +10,10 @@ local Utils = {};
 function Utils.copyInto(toTable, fromTable)
   
   for k, v in pairs(fromTable) do
-    toTable[k] = v;
+      toTable[k] = v;
   end  
+  
+  return toTable;
   
 end
 
@@ -64,12 +66,17 @@ function PlayerHistory.rebuild(ph, state, tick, moat)
   List.pushright(ph.inputHistory, nil);
 
   
-  ph.state = state;
+  ph.state = {};
+  Utils.copyInto(ph.state, state);
+  
+  
    for t = tick, newTick do
     
     local oldInput = oldHistory[oldTick - (newTick - t)];
     
-    ph.inputHistory[ph.input] = oldInput;
+    if (oldInput) then
+      ph.inputHistory[ph.tick] = Utils.copyInto({}, oldInput);
+    end
     
     PlayerHistory.advance(ph, moat);
     
@@ -81,7 +88,8 @@ function PlayerHistory.advance(ph, moat)
   
   local inputHistory = ph.inputHistory;  
 
-  moat:applyPlayerInput(ph.state, inputHistory[ph.tick]);
+  moat:playerUpdate(ph.state, inputHistory[ph.tick]);
+  moat:rehashEntity(ph.state);
   
   List.pushright(inputHistory, nil);
   ph.tick = ph.tick + 1;
@@ -104,7 +112,7 @@ function Moat:initClient()
   
   self.ping = 100;
   
-  function self:spawnEntity()
+  function self:spawn()
     
     ---
   end
@@ -127,24 +135,17 @@ function Moat:initClient()
     
   end
   
+  function self:despawn(entity)
+    entity.despawned = true;
+  end
+  
   --Client Tick
   function self:advanceGameState()
     PlayerHistory.advance(ph, self); 
-    self:clientTick(self.gameState);
+    self:clientUpdate(self.gameState);
   end
   
-  function self:setPlayerInput(input)
-  
-  --[[
-    local playerState = PlayerHistory.getLastState(ph);
-    playerState.input = playerState.input or {};
-    
-    for k,v in pairs(input) do
-      playerState.input[k] = v;
-    end
-  ]]
-  
-      
+  function self:setPlayerInput(input)  
     PlayerHistory.updateInput(ph, input);
   end
   
@@ -153,7 +154,9 @@ function Moat:initClient()
   function self:syncPlayer(player)
     local ping = cs.client.getPing();
   
-    if (share.tick > gameState.tick or math.abs(ping - lastSyncPing) > 20) then
+    if (share.tick > gameState.tick or 
+      math.abs(ping - lastSyncPing) > 20
+    ) then
       print("rebuild", share.tick, gameState.tick);
       PlayerHistory.rebuild(ph, player, share.tick, self);
       gameState.tick = ph.tick;
@@ -164,18 +167,30 @@ function Moat:initClient()
   end
   
   function self:syncEntity(entity)
-    self:rehashEntity(entity);
-    gameState.entitiesByType[entity.type][entity.uuid] = entity;
-    gameState.entities[entity.uuid] = entity;
     
-    if (entity.uuid == cs.client.id) then
-        self:syncPlayer(entity);
+    
+    if (entity.uuid == cs.client.id and cs.client.id) then
+        
+        self:syncPlayer(entity);       
+        self.gameState.entitiesByType[self.EntityTypes.Player][entity.uuid] = nil;
+        self.gameState.entities[entity.uuid] = nil;
+      
+    else
+      gameState.entities[entity.uuid] = gameState.entities[entity.uuid] or {};
+      local localEntity = gameState.entities[entity.uuid];
+      Utils.copyInto(localEntity, entity);
+      self:rehashEntity(localEntity);
+      gameState.entitiesByType[entity.type][entity.uuid] = localEntity;
+      
     end
+    
   end
 
   function self:unsyncEntityId(uuid) 
       local entity = gameState.entities[uuid];
-      self:despawnEntity(entity);
+      if (entity) then
+        self:despawn(entity);
+      end
   end
   
   function self:syncEntities(diff)
@@ -216,7 +231,7 @@ function Moat:initServer()
     share.entities = {};
     gameState.entities = share.entities;
     
-    function self:spawnEntity(type, x, y, w, h, data)
+    function self:spawn(type, x, y, w, h, data)
       
       local uuid;
       
@@ -237,7 +252,6 @@ function Moat:initServer()
         uuid = uuid
       };
       
-      print("Adding", uuid);
       local entity = share.entities[uuid];
 
       gameState.space:add(entity, entity.x, entity.y, entity.w, entity.h);
@@ -246,6 +260,10 @@ function Moat:initServer()
       return entity;
     end
     
+    function self:despawn(entity)
+      self:destroy(entity);
+    end
+
     function self:setPlayerInput()
     
     end
@@ -265,20 +283,8 @@ function Moat:initServer()
           local player = share.entities[id];
           if (home.playerHistory) then
           
-          --[[
-            local clientState = PlayerHistory.getState(home.playerHistory, tick);
-            if (clientState) then
-              clientState.x, clientState.y = player.x, player.y;
-              clientState.w, clientState.h = player.w, player.h;
-              --clientState.data = player.data;
-              self:advancePlayer(player, clientState);
-              self:rehashEntity(player);
-              --print(player.y);
-            end --if client state
-            ]]
-            
             local clientInput = PlayerHistory.getInput(home.playerHistory, tick);
-            self:applyPlayerInput(player, clientInput);
+            self:playerUpdate(player, clientInput);
             self:rehashEntity(player);
 
             
@@ -294,13 +300,13 @@ function Moat:initServer()
     function self:serverTick()
       
     end
-    
+       
     function self:spawnNewPlayer(id)
       
-      local x,y = 0, 0;
+      local x,y = self:newPlayerPosition();
       local width, height = 1, 1;
       
-      self:spawnEntity(self.EntityTypes.Player, 
+      self:spawn(self.EntityTypes.Player, 
         x, y, width, height, {uuid = id}
       );
     
@@ -317,6 +323,7 @@ function Moat:initGameState()
     
   for name, value in pairs(self.EntityTypes) do
     gameState.entitiesByType[value] = {};
+    print("ebt", value);
   end
  
   
@@ -329,35 +336,25 @@ function Moat:initCommon()
   local gameState = self.gameState;
   local space = gameState.space;
   
-  --[[
-  function self:advancePlayer(newState, oldState)
-    
-    newState.x = oldState.x;
-    newState.y = oldState.y;
-    newState.w = oldState.w;
-    newState.h = oldState.h;
-    --newState.data = oldState.data;
-    newState.input = nil;
-    
-    self:applyPlayerInput(newState, oldState, oldState.input);
-    
-  end
-  ]]
-  
-  
-  function self:applyPlayerInput(player, input)
+  function self:playerUpdate(player, input)
     
   end
   
-  function self:despawnEntity(entity)
+  function self:destroy(entity)
       gameState.space:remove(entity);
       gameState.entitiesByType[entity.type][entity.uuid] = nil;
       gameState.entities[entity.uuid] = nil;
   end
   
   function self:eachEntityOfType(type, fn)
+    if (not gameState.entitiesByType[type]) then
+      print("Bad Type", type);
+    end
+  
     for uuid, entity in pairs(gameState.entitiesByType[type]) do
-      fn(entity);
+      if (not entity.despawned) then
+        fn(entity);
+      end
     end
   end
   
@@ -366,10 +363,17 @@ function Moat:initCommon()
   end
     
   function self:eachOverlapping(entity, fn)
+    
+    local ifActive = function(entity)
+      if (not entity.despawned) then
+        fn(entity);
+      end
+    end
+  
     if (space:contains(entity)) then
-      space:each(entity, fn);
+      space:each(entity, ifActive);
     else
-      space:each(entity.x, entity.y, entity.w, entity.h, fn);
+      space:each(entity.x, entity.y, entity.w, entity.h, ifActive);
     end
   end
   
@@ -440,7 +444,7 @@ function Moat:runServer()
     end
     
     function server.disconnect(id)
-    
+      self:despawn(self.gameState.entities[id]);
     end
     
     function server.update(dt)
@@ -471,9 +475,7 @@ function Moat:runClient()
     
   end
   
-  self.keyboard = {};
   function client.keypressed(key)
-    self.keyboard[key] = 1.0;
     self:clientKeyPressed(key);
   end
   
