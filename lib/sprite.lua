@@ -1,8 +1,8 @@
 
 local QuadCache = {};
-local TileGfx = {};
+local Sprite = {};
 
-TileGfx = {
+Sprite = {
 
   imgRes = 32,
   
@@ -21,7 +21,7 @@ TileGfx = {
     
     if (not QuadCache[key]) then
       QuadCache[key] = love.graphics.newQuad(
-        0,0, TileGfx.imgRes * width, TileGfx.imgRes * height, TileGfx.imgRes, TileGfx.imgRes
+        0,0, Sprite.imgRes * width, Sprite.imgRes * height, Sprite.imgRes, Sprite.imgRes
       );
     end
     
@@ -33,10 +33,10 @@ TileGfx = {
     
     love.graphics.setColor(1.0, 1.0, 1.0, 1.0);
 
-    love.graphics.draw(img, TileGfx.getQuad(w, h),
+    love.graphics.draw(img, Sprite.getQuad(w, h),
         x, y, 0.0, scale * (flipx or 1.0), scale, 16, 16);
   
   end
 }
 
-return TileGfx
+return Sprite

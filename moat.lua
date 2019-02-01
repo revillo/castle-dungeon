@@ -9,12 +9,18 @@ local Utils = {};
 
 function Utils.copyInto(toTable, fromTable)
   
-  for k, v in pairs(fromTable) do
-      toTable[k] = v;
-  end  
-  
+  if (fromTable) then
+    for k, v in pairs(fromTable) do
+        toTable[k] = v;
+    end  
+  end
   return toTable;
   
+end
+
+function Utils.distance(entityA, entityB)
+  local dx, dy = entityA.x - entityB.x, entityA.y - entityB.y;
+  return math.sqrt(dx * dx + dy * dy);
 end
 
 function PlayerHistory.new()
@@ -45,6 +51,14 @@ function PlayerHistory.getInput(ph, tick)
   return ph.inputHistory[tick];
 end
 
+local doLog = 1000;
+local alog = function(...)
+  if (doLog > 0) then
+  doLog = doLog - 1;
+    print(...);
+  end
+end
+  
 function PlayerHistory.updateInput(ph, input)
 
   if (input) then
@@ -55,44 +69,47 @@ function PlayerHistory.updateInput(ph, input)
 end
 
 function PlayerHistory.rebuild(ph, state, tick, moat)
-  local ping = cs.client.getPing();
+  local idealTick = tick + math.ceil((moat:getPing()*0.001) / moat.Constants.TickInterval) + 2;
   
-  local newTick = tick + math.ceil((ping/1000.0) / moat.Constants.TickInterval);
- 
-  local oldTick = ph.tick;
-  ph.tick = tick;
-  local oldHistory = ph.inputHistory;
-  ph.inputHistory = List.new(tick);
-  List.pushright(ph.inputHistory, nil);
-
+  local idealDiff = idealTick - ph.tick;
   
-  ph.state = {};
-  Utils.copyInto(ph.state, state);
-  
-  
-   for t = tick, newTick do
-    
-    local oldInput = oldHistory[oldTick - (newTick - t)];
-    
-    if (oldInput) then
-      ph.inputHistory[ph.tick] = Utils.copyInto({}, oldInput);
-    end
-    
-    PlayerHistory.advance(ph, moat);
-    
+  if (idealDiff > -2 and idealDiff < 4) then
+    idealTick = ph.tick;
+  else
+    print("snap");
   end
   
+  local oldTick = ph.tick;
+  
+  Utils.copyInto(ph.state, state);
+  ph.tick = tick;
+  
+  
+  for pt = ph.inputHistory.last, tick do
+    if (not ph.inputHistory[pt]) then
+      ph.inputHistory[pt] = {};
+      Utils.copyInto(ph.inputHistory[pt], ph.inputHistory[pt-1]);
+    end
+  end
+  ph.inputHistory.last = tick;
+
+  for t = tick, idealTick do
+      PlayerHistory.advance(ph, moat, ph.inputHistory);
+  end
+
 end
 
-function PlayerHistory.advance(ph, moat)
+function PlayerHistory.advance(ph, moat, inputHistory)
   
-  local inputHistory = ph.inputHistory;  
-
   moat:playerUpdate(ph.state, inputHistory[ph.tick]);
   moat:rehashEntity(ph.state);
   
-  List.pushright(inputHistory, nil);
+  --List.pushright(inputHistory, nil);
   ph.tick = ph.tick + 1;
+  inputHistory.last = ph.tick;
+  inputHistory[ph.tick] = inputHistory[ph.tick] or {};
+  --Utils.copyInto(inputHistory[ph.tick], inputHistory[ph.tick-1]);
+  
   if (List.length(inputHistory) >= moat.Constants.MaxHistory) then
     List.popleft(inputHistory) 
   end
@@ -125,6 +142,9 @@ function Moat:initClient()
   
   function self:clientMouseMoved() end
   
+  function self:clientLoad() end
+  function self:clientResize() end
+  
   function self:getPlayerState()
   
     return PlayerHistory.getLastState(ph);
@@ -136,52 +156,62 @@ function Moat:initClient()
   end
   
   function self:despawn(entity)
-    entity.despawned = true;
+    entity.despawned = share.tick;
+  end
+  
+  function self:getPing()
+    return cs.client.getPing();
   end
   
   --Client Tick
   function self:advanceGameState()
-    PlayerHistory.advance(ph, self); 
+    
+    if (self.doRebuild) then
+      PlayerHistory.rebuild(ph, self.doRebuild.serverState, self.doRebuild.tick, self);
+      self.doRebuild = nil;
+    else
+      if (ph.state.clientId == nil) then return end
+      PlayerHistory.advance(ph, self, ph.inputHistory); 
+    end
+    gameState.tick = ph.tick;
+
     self:clientUpdate(self.gameState);
   end
   
-  function self:setPlayerInput(input)  
+  function self:setPlayerInput(input)    
     PlayerHistory.updateInput(ph, input);
   end
   
-  local lastSyncPing = self.ping;
-  
-  function self:syncPlayer(player)
-    local ping = cs.client.getPing();
-  
-    if (share.tick > gameState.tick or 
-      math.abs(ping - lastSyncPing) > 20
-    ) then
-      print("rebuild", share.tick, gameState.tick);
-      PlayerHistory.rebuild(ph, player, share.tick, self);
-      gameState.tick = ph.tick;
-      lastSyncPing = ping;
-    else
-      --print("no reb", ping, lastSyncPing);
-    end
+  function self:syncPlayer(serverPlayer)
+      self.doRebuild = {
+        serverState = serverPlayer,
+        tick = share.tick
+      };
   end
   
-  function self:syncEntity(entity)
+  local cntr = 10;
+  
+  function self:syncEntity(serverEntity)
     
     
-    if (entity.uuid == cs.client.id and cs.client.id) then
-        
-        self:syncPlayer(entity);       
-        self.gameState.entitiesByType[self.EntityTypes.Player][entity.uuid] = nil;
-        self.gameState.entities[entity.uuid] = nil;
+    if (serverEntity.clientId == cs.client.id and cs.client.id) then
+             
+        self:syncPlayer(serverEntity);       
+        self.gameState.entitiesByType[self.EntityTypes.Player][serverEntity.uuid] = nil;
+        self.gameState.entities[serverEntity.uuid] = nil;
       
     else
-      gameState.entities[entity.uuid] = gameState.entities[entity.uuid] or {};
-      local localEntity = gameState.entities[entity.uuid];
-      Utils.copyInto(localEntity, entity);
+      gameState.entities[serverEntity.uuid] = gameState.entities[serverEntity.uuid] or {};
+      local localEntity = gameState.entities[serverEntity.uuid];
+      Utils.copyInto(localEntity, serverEntity);
       self:rehashEntity(localEntity);
-      gameState.entitiesByType[entity.type][entity.uuid] = localEntity;
+      gameState.entitiesByType[serverEntity.type][serverEntity.uuid] = localEntity;
       
+      if (localEntity.despawned and (share.tick > localEntity.despawned)) then
+        localEntity.despawned = nil;
+      elseif (localEntity.despawned) then
+        print("dtik", share.tick, localEntity.despawned)
+      end
     end
     
   end
@@ -189,24 +219,33 @@ function Moat:initClient()
   function self:unsyncEntityId(uuid) 
       local entity = gameState.entities[uuid];
       if (entity) then
-        self:despawn(entity);
+        self:destroy(entity);
       end
   end
   
   function self:syncEntities(diff)
-    local entities = cs.client.share.entities;
+    local serverEntities = cs.client.share.entities;
     local gameState = self.gameState;
     
-    for uuid, e in pairs(entities) do
+    for uuid, e in pairs(serverEntities) do
       self:syncEntity(e);
     end
     
     --Remove entity if no longer syncing
+    --[[
     for uuid, diff in pairs(diff.entities or {}) do 
       if (diff == cs.DIFF_NIL) then
         self:unsyncEntityId(uuid);
       end
     end
+    ]]
+    
+    for uuid, e in pairs(gameState.entities) do
+      if (not serverEntities[uuid]) then
+        self:unsyncEntityId(uuid);
+      end
+    end
+    
   end
     
   function self:clientDraw()
@@ -222,6 +261,7 @@ function Moat:initServer()
     self.share = cs.server.share;
     self.homes = cs.server.homes;
     self.uuidTracker = 0;
+    self.entityForClient = {};
    
     local share = self.share;
     local gameState = self.gameState;
@@ -234,6 +274,7 @@ function Moat:initServer()
     function self:spawn(type, x, y, w, h, data)
       
       local uuid;
+     
       
       if (data and data.uuid) then
         uuid = data.uuid;
@@ -241,6 +282,8 @@ function Moat:initServer()
         self.uuidTracker = self.uuidTracker + 1;
         uuid = "e"..self.uuidTracker;
       end
+      
+      
       
       share.entities[uuid] = {
         type = type,
@@ -254,8 +297,17 @@ function Moat:initServer()
       
       local entity = share.entities[uuid];
 
+      
+      Utils.copyInto(entity, data);
+      
       gameState.space:add(entity, entity.x, entity.y, entity.w, entity.h);
       gameState.entitiesByType[entity.type][entity.uuid] = entity;
+      gameState.entityCounts[entity.type] = gameState.entityCounts[entity.type] + 1;
+      
+      if (type == self.EntityTypes.Player and data and data.clientId) then
+        self.entityForClient[data.clientId] = entity;
+        print("spawn", entity.clientId, entity.uuid);
+      end
       
       return entity;
     end
@@ -280,10 +332,11 @@ function Moat:initServer()
 
       for id, home in pairs(homes) do
             --Server player state
-          local player = share.entities[id];
+          local player = self.entityForClient[id];
           if (home.playerHistory) then
           
-            local clientInput = PlayerHistory.getInput(home.playerHistory, tick);
+            local clientInput = PlayerHistory.getInput(home.playerHistory, tick-1);
+            
             self:playerUpdate(player, clientInput);
             self:rehashEntity(player);
 
@@ -294,20 +347,27 @@ function Moat:initServer()
     
     function self:advanceGameState() 
       self:updateAllPlayers();
-      self:serverTick(self.gameState);
+      self:serverUpdate(self.gameState);
     end
     
-    function self:serverTick()
-      
-    end
        
     function self:spawnNewPlayer(id)
       
-      local x,y = self:newPlayerPosition();
+      local x,y = 0,0;
       local width, height = 1, 1;
+      local player = {
+        x = x,
+        y = y,
+        w = width,
+        h = height
+      }
+      
+      self:resetPlayer(player);
+      
+      player.clientId = id;
       
       self:spawn(self.EntityTypes.Player, 
-        x, y, width, height, {uuid = id}
+        player.x, player.y, player.w, player.h, player
       );
     
     end
@@ -315,15 +375,17 @@ end
 
 function Moat:initGameState()
   local gameState = {};
+  
   gameState.entities = {};
   gameState.space = Shash.new(self.Constants.CellSize);
   gameState.timeTracker = 0;
   gameState.tick = 0;
   gameState.entitiesByType = {};
+  gameState.entityCounts = {};
     
   for name, value in pairs(self.EntityTypes) do
     gameState.entitiesByType[value] = {};
-    print("ebt", value);
+    gameState.entityCounts[value] = 0;
   end
  
   
@@ -340,10 +402,15 @@ function Moat:initCommon()
     
   end
   
+  function self:numEntitiesOfType(type)
+    return gameState.entityCounts[type];
+  end
+  
   function self:destroy(entity)
       gameState.space:remove(entity);
       gameState.entitiesByType[entity.type][entity.uuid] = nil;
       gameState.entities[entity.uuid] = nil;
+      gameState.entityCounts[entity.type] = gameState.entityCounts[entity.type] - 1;
   end
   
   function self:eachEntityOfType(type, fn)
@@ -355,6 +422,18 @@ function Moat:initCommon()
       if (not entity.despawned) then
         fn(entity);
       end
+    end
+  end
+  
+  function self:eachEntityOfType2(type, fn)
+    if (not gameState.entitiesByType[type]) then
+      print("Bad Type", type);
+    end
+  
+    for uuid, entity in pairs(gameState.entitiesByType[type]) do
+      --if (not entity.despawned) then
+        fn(entity);
+      --end
     end
   end
   
@@ -398,7 +477,8 @@ function Moat:new(entityTypes, constants)
     Constants = {
         CellSize = 5,
         TickInterval = 1.0 / 60.0,
-        MaxHistory = 120
+        MaxHistory = 120,
+        DriftLimit = 4
     },
     EntityTypes = {
       Player = 0
@@ -444,7 +524,7 @@ function Moat:runServer()
     end
     
     function server.disconnect(id)
-      self:despawn(self.gameState.entities[id]);
+      self:despawn(self.entityForClient[id]);
     end
     
     function server.update(dt)
@@ -465,14 +545,33 @@ end
 
 
 function Moat:runClient()
+
   local client = self.client;
 
+  local hasConnected = false;
+  
   function client.update(dt)
-    self:update(dt);
+    if (client.id) then
+      
+      if (not hasConnected) then
+        hasConnected = true;
+        self:syncEntities({});
+      end
+    
+      self:update(dt);
+    end
   end
 
+  function client.load()
+    self:clientLoad();
+  end
+  
   function client.receive(msg)
     
+  end
+  
+  function client.resize(x, y)
+    self:clientResize(x, y);
   end
   
   function client.keypressed(key)
@@ -496,13 +595,9 @@ function Moat:runClient()
   end
   
   function client.draw()
-    --print("Drawing");
     self:clientDraw();
   end
-  
-  function client.load()
-    --print("Loaded");
-  end
+ 
 
   if USE_CASTLE_CONFIG then
       print("Use castle config");
