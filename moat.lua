@@ -130,8 +130,9 @@ function Moat:initClient()
   self.ping = 100;
   
   function self:spawn()
-    
-    ---
+  end
+  
+  function self:spawnPlayer()
   end
   
   function self:clientKeyPressed(key) end
@@ -154,6 +155,7 @@ function Moat:initClient()
   function self:clientTick(gameState)
     
   end
+  
   
   function self:despawn(entity)
     entity.despawned = share.tick;
@@ -351,7 +353,7 @@ function Moat:initServer()
     end
     
        
-    function self:spawnNewPlayer(id)
+    function self:spawnPlayer(id)
       
       local x,y = 0,0;
       local width, height = 1, 1;
@@ -520,7 +522,7 @@ function Moat:runServer()
     local server = cs.server;
     --(type, x, y, w, h, data)
     function server.connect(id)
-      self:spawnNewPlayer(id);
+      self:spawnPlayer(id);
     end
     
     function server.disconnect(id)
