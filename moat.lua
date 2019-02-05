@@ -209,10 +209,8 @@ function Moat:initClient()
       self:rehashEntity(localEntity);
       gameState.entitiesByType[serverEntity.type][serverEntity.uuid] = localEntity;
       
-      if (localEntity.despawned and (share.tick > localEntity.despawned)) then
+      if (localEntity.despawned and (share.tick > localEntity.despawned + 20)) then
         localEntity.despawned = nil;
-      elseif (localEntity.despawned) then
-        print("dtik", share.tick, localEntity.despawned)
       end
     end
     
