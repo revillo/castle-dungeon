@@ -1,4 +1,4 @@
---castle://localhost:4000/moat_test.lua
+--castle://localhost:4000/munch_source.lua
 
 local Moat = require("moat");
 
@@ -18,7 +18,11 @@ local MyGame = Moat:new(
 );
 
 local showMenu = true;
-local input = {};
+local tileSizePx = 30.0;
+local cameraCenter = {x = 0, y = 0};
+local offsetPx = {x = 0, y = 0};
+local mousePos = {x = 0, y = 0};
+
 
 function MyGame:clientMousePressed(x, y)
   if (self:clientIsConnected() and showMenu) then
@@ -31,6 +35,12 @@ function MyGame:clientMousePressed(x, y)
   end
 end
 
+
+function MyGame:clientMouseMoved(x, y)
+  mousePos.x = x;
+  mousePos.y = y;
+end
+
 function MyGame:serverReceive(clientId, msg)
     
   if (msg.cmd == "request_spawn") then
@@ -40,6 +50,7 @@ function MyGame:serverReceive(clientId, msg)
 end
 
 --Update client for every game tick
+local input = {};
 function MyGame:clientUpdate(gameState)
   if (not self:clientIsSpawned()) then
     return
@@ -50,6 +61,13 @@ function MyGame:clientUpdate(gameState)
   input.a = love.keyboard.isDown("a");
   input.s = love.keyboard.isDown("s");
   input.d = love.keyboard.isDown("d");
+  
+  --Scale the to-mouse vector a few tiles worth so we can modify speed based on distance
+  local mouseScale = tileSizePx * 5.0;
+  
+  input.mx = ((mousePos.x - offsetPx.x) / mouseScale);
+  input.my = ((mousePos.y - offsetPx.y) / mouseScale);
+  
   MyGame:setPlayerInput(input);
   
 end
@@ -72,9 +90,10 @@ function MyGame:playerUpdate(player, input)
   
   if (input) then 
     
-    --Move player based on keyboard input
-    local x, y = 0, 0;
+    --Try mouse (mx, my) values
+    local x, y = input.mx or 0, input.my or 0;
     
+    --Move player based on keyboard input
     if (input.w) then y = -1 end
     if (input.a) then x = -1 end
     if (input.s) then y = 1 end
@@ -82,7 +101,7 @@ function MyGame:playerUpdate(player, input)
     
     --Normalize movement vector
     local mag = math.sqrt(x * x + y * y);
-    if (mag > 0.0) then
+    if (mag > 1.0) then
       x, y = x/mag, y/mag;
     end
     
@@ -121,11 +140,6 @@ function MyGame:playerUpdate(player, input)
   end);
   
 end
-
-
-local tileSizePx = 30.0;
-local cameraCenter = {x = 0, y = 0};
-local offsetPx = {x = 0, y = 0};
 
 function drawRect(e)
   
