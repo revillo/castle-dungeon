@@ -9,7 +9,6 @@ local GameEntities = {
 }
 
 local GameConstants = {
-  PlayerSpeed = 0.1,
   WorldSize = 100
 }
 
@@ -18,10 +17,34 @@ local MyGame = Moat:new(
   GameConstants
 );
 
+local showMenu = true;
 local input = {};
+
+function MyGame:clientMousePressed(x, y)
+  if (self:clientIsConnected() and showMenu) then
+    
+    self:clientSend({
+      cmd = "request_spawn"
+    });
+    
+    showMenu = false;
+  end
+end
+
+function MyGame:serverReceive(clientId, msg)
+    
+  if (msg.cmd == "request_spawn") then
+    self:spawnPlayer(clientId);
+  end
+  
+end
+
 --Update client for every game tick
 function MyGame:clientUpdate(gameState)
-
+  if (not self:clientIsSpawned()) then
+    return
+  end
+  
   --Set inputs
   input.w = love.keyboard.isDown("w");
   input.a = love.keyboard.isDown("a");
@@ -90,16 +113,9 @@ function MyGame:playerUpdate(player, input)
     end
     
     if (entity.type == GameEntities.Player) then
-      if (entity.w > player.w) then
-        -- Other user handles this case
-      elseif (entity.w < player.w) then
-        resizePlayer(player, player.w + entity.w / 5.0);
-        
-          MyGame:despawn(entity);
-
-          if MyGame.isServer then -- Can call spawn on client but it does nothing, spawning should happen on server
-            MyGame:spawnPlayer(entity.clientId);
-          end
+      if (player.w > entity.w) then
+          resizePlayer(player, player.w + entity.w / 5.0);
+          self:respawn(entity);
       end
     end
   end);
@@ -151,7 +167,27 @@ function drawGrid()
   end
 end
 
+
 function MyGame:clientDraw() 
+
+  if (not self:clientIsConnected()) then
+    love.graphics.setColor(1,1,1,1);
+    love.graphics.print("Connecting...", 10, 10, 0, 2, 2);
+    return;
+  end
+  
+  if (showMenu) then
+    love.graphics.setColor(1,1,1,1);
+    love.graphics.print("Click to spawn...", 10, 10, 0, 2, 2);
+    return;
+  end
+
+  if (not self:clientIsSpawned()) then
+    love.graphics.setColor(1,1,1,1);
+    love.graphics.print("Waiting for spawn...", 10, 10, 0, 2, 2);
+    return;
+  end
+  
   local player = self:getPlayerState();
   cameraCenter.x = player.x + player.w * 0.5;
   cameraCenter.y = player.y + player.h * 0.5;

@@ -122,6 +122,9 @@ function Moat:initClient()
   self.share = cs.client.share;
   self.home = cs.client.home;
   self.home.playerHistory = PlayerHistory:new();
+  
+  local isSpawned = false;
+  
   local ph = self.home.playerHistory;
   local gameState = self.gameState;
   local space = gameState.space;
@@ -158,7 +161,7 @@ function Moat:initClient()
   
   
   function self:despawn(entity)
-    entity.despawned = share.tick;
+    entity.despawned = gameState.tick;
   end
   
   function self:getPing()
@@ -188,21 +191,27 @@ function Moat:initClient()
       self.doRebuild = {
         serverState = serverPlayer,
         tick = share.tick
-      };
+      };      
+      
+      self.gameState.entitiesByType[self.EntityTypes.Player][serverPlayer.uuid] = nil;
+      
+      self.gameState.entities[serverPlayer.uuid] = nil;
   end
   
   local cntr = 10;
   
-  function self:syncEntity(serverEntity)
+  function self:clientIsSpawned()
+    return isSpawned;
+  end
+  
+  function self:clientSyncEntity(serverEntity)
     
-    
+    -- This is the server version of our player, so handle the special case
     if (serverEntity.clientId == cs.client.id and cs.client.id) then
-             
-        self:syncPlayer(serverEntity);       
-        self.gameState.entitiesByType[self.EntityTypes.Player][serverEntity.uuid] = nil;
-        self.gameState.entities[serverEntity.uuid] = nil;
-      
+        isSpawned = true;
+        self:syncPlayer(serverEntity);
     else
+    --Sync any other game entity
       gameState.entities[serverEntity.uuid] = gameState.entities[serverEntity.uuid] or {};
       local localEntity = gameState.entities[serverEntity.uuid];
       Utils.copyInto(localEntity, serverEntity);
@@ -216,40 +225,49 @@ function Moat:initClient()
     
   end
 
-  function self:unsyncEntityId(uuid) 
+  function self:clientUnsyncEntityId(uuid) 
       local entity = gameState.entities[uuid];
       if (entity) then
         self:destroy(entity);
       end
   end
   
-  function self:syncEntities(diff)
+  function self:clientSyncEntities(diff)
     local serverEntities = cs.client.share.entities;
     local gameState = self.gameState;
-    
+    isSpawned = false;
+    --print("sync false");
+
     for uuid, e in pairs(serverEntities) do
-      self:syncEntity(e);
+      self:clientSyncEntity(e);
     end
-    
-    --Remove entity if no longer syncing
-    --[[
-    for uuid, diff in pairs(diff.entities or {}) do 
-      if (diff == cs.DIFF_NIL) then
-        self:unsyncEntityId(uuid);
-      end
-    end
-    ]]
     
     for uuid, e in pairs(gameState.entities) do
       if (not serverEntities[uuid]) then
-        self:unsyncEntityId(uuid);
+        self:clientUnsyncEntityId(uuid);
       end
     end
     
   end
+  
+  function self:respawn(entity)
+    self:despawn(entity);
+  end
     
   function self:clientDraw()
   
+  end
+  
+  function self:clientReceive(msg)
+  
+  end
+  
+  function self:clientSend(msg)
+    cs.client.send(msg);
+  end
+  
+  function self:clientIsConnected()
+    return cs.client.connected;
   end
   
 end
@@ -275,15 +293,12 @@ function Moat:initServer()
       
       local uuid;
      
-      
       if (data and data.uuid) then
         uuid = data.uuid;
       else
         self.uuidTracker = self.uuidTracker + 1;
         uuid = "e"..self.uuidTracker;
       end
-      
-      
       
       share.entities[uuid] = {
         type = type,
@@ -313,9 +328,16 @@ function Moat:initServer()
     end
     
     function self:despawn(entity)
+      if not entity then return end;
+      
       self:destroy(entity);
     end
 
+    function self:respawn(player)
+      self:despawn(player);
+      self:spawnPlayer(player.clientId);
+    end
+    
     function self:setPlayerInput()
     
     end
@@ -333,7 +355,8 @@ function Moat:initServer()
       for id, home in pairs(homes) do
             --Server player state
           local player = self.entityForClient[id];
-          if (home.playerHistory) then
+          
+          if (player and home.playerHistory) then
           
             local clientInput = PlayerHistory.getInput(home.playerHistory, tick-1);
             
@@ -350,8 +373,15 @@ function Moat:initServer()
       self:serverUpdate(self.gameState);
     end
     
+    function self:serverSend(clientId, msg)
+      cs.server.send(clientId, msg);
+    end
+    
+    function self:serverReceive(clientId, msg) 
+    
+    end
        
-    function self:spawnPlayer(id)
+    function self:spawnPlayer(clientId)
       
       local x,y = 0,0;
       local width, height = 1, 1;
@@ -364,7 +394,7 @@ function Moat:initServer()
       
       self:resetPlayer(player);
       
-      player.clientId = id;
+      player.clientId = clientId;
       
       self:spawn(self.EntityTypes.Player, 
         player.x, player.y, player.w, player.h, player
@@ -406,7 +436,7 @@ function Moat:initCommon()
     return gameState.entityCounts[type];
   end
   
-  function self:destroy(entity)
+  function self:destroy(entity) 
       gameState.space:remove(entity);
       gameState.entitiesByType[entity.type][entity.uuid] = nil;
       gameState.entities[entity.uuid] = nil;
@@ -419,21 +449,20 @@ function Moat:initCommon()
     end
   
     for uuid, entity in pairs(gameState.entitiesByType[type]) do
-      if (not entity.despawned) then
+      if (not entity.despawned or gameState.tick < entity.despawned) then
         fn(entity);
       end
     end
   end
   
+  --Debug version w/o despawning
   function self:eachEntityOfType2(type, fn)
     if (not gameState.entitiesByType[type]) then
       print("Bad Type", type);
     end
   
     for uuid, entity in pairs(gameState.entitiesByType[type]) do
-      --if (not entity.despawned) then
         fn(entity);
-      --end
     end
   end
   
@@ -520,7 +549,7 @@ function Moat:runServer()
     local server = cs.server;
     --(type, x, y, w, h, data)
     function server.connect(id)
-      self:spawnPlayer(id);
+      --self:spawnPlayer(id);
     end
     
     function server.disconnect(id)
@@ -529,6 +558,10 @@ function Moat:runServer()
     
     function server.update(dt)
       self:update(dt);
+    end
+    
+    function server.receive(clientId, msg)
+      self:serverReceive(clientId, msg);
     end
     
     self:serverInitWorld(self.gameState);
@@ -551,11 +584,11 @@ function Moat:runClient()
   local hasConnected = false;
   
   function client.update(dt)
-    if (client.id) then
+    if (client.connected and client.id) then
       
       if (not hasConnected) then
         hasConnected = true;
-        self:syncEntities({});
+        self:clientSyncEntities({});
       end
     
       self:update(dt);
@@ -567,7 +600,7 @@ function Moat:runClient()
   end
   
   function client.receive(msg)
-    
+    self:clientReceive(msg);
   end
   
   function client.resize(x, y)
@@ -582,8 +615,8 @@ function Moat:runClient()
     self:clientKeyReleased(key);
   end
   
-  function client.mousepressed()
-    self:clientMousePressed();
+  function client.mousepressed(x, y)
+    self:clientMousePressed(x, y);
   end
   
   function client.mousemoved(x, y)
@@ -591,7 +624,7 @@ function Moat:runClient()
   end
   
   function client.changed(diff)
-    self:syncEntities(diff);
+    self:clientSyncEntities(diff);
   end
   
   function client.draw()
