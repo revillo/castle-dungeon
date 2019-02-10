@@ -24,6 +24,11 @@ local offsetPx = {x = 0, y = 0};
 local mousePos = {x = 0, y = 0};
 
 
+function MyGame:clientMouseMoved(x, y)
+  mousePos.x = x;
+  mousePos.y = y;
+end
+
 function MyGame:clientMousePressed(x, y)
   if (self:clientIsConnected() and showMenu) then
     
@@ -33,12 +38,6 @@ function MyGame:clientMousePressed(x, y)
     
     showMenu = false;
   end
-end
-
-
-function MyGame:clientMouseMoved(x, y)
-  mousePos.x = x;
-  mousePos.y = y;
 end
 
 function MyGame:serverReceive(clientId, msg)
@@ -134,10 +133,12 @@ function MyGame:playerUpdate(player, input)
     if (entity.type == GameEntities.Player) then
       if (player.w > entity.w) then
           resizePlayer(player, player.w + entity.w / 5.0);
-          self:respawn(entity);
+          self:respawnPlayer(entity);
       end
     end
   end);
+  
+  MyGame:rehashEntity(player);
   
 end
 
@@ -181,24 +182,26 @@ function drawGrid()
   end
 end
 
+function drawText(text)
+    love.graphics.setColor(1,1,1,1);
+    love.graphics.print(text, 10, 10, 0, 2, 2);
+end
+
 
 function MyGame:clientDraw() 
 
   if (not self:clientIsConnected()) then
-    love.graphics.setColor(1,1,1,1);
-    love.graphics.print("Connecting...", 10, 10, 0, 2, 2);
+    drawText("Connecting... signed in to castle?");
     return;
   end
   
   if (showMenu) then
-    love.graphics.setColor(1,1,1,1);
-    love.graphics.print("Click to spawn...", 10, 10, 0, 2, 2);
+    drawText("Click to spawn...")
     return;
   end
 
   if (not self:clientIsSpawned()) then
-    love.graphics.setColor(1,1,1,1);
-    love.graphics.print("Waiting for spawn...", 10, 10, 0, 2, 2);
+    drawText("Waiting for spawn...");
     return;
   end
   
@@ -210,7 +213,7 @@ function MyGame:clientDraw()
   drawGrid();
   self:eachEntityOfType(GameEntities.Food, drawFood);
   self:eachEntityOfType(GameEntities.Player, drawPlayer);
-  drawPlayer(player);
+  drawPlayer(player);	
 end
 
 
@@ -246,7 +249,7 @@ function MyGame:clientResize(x, y)
 end
 
 --Calls when a player spawns 
-function MyGame:resetPlayer(player)
+function MyGame:serverResetPlayer(player)
   player.x , player.y = math.random(GameConstants.WorldSize), math.random(GameConstants.WorldSize) 
   player.w , player.h = 1, 1;
 end
