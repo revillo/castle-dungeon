@@ -9,7 +9,9 @@ local GameEntities = {
 }
 
 local GameConstants = {
-  WorldSize = 100
+  WorldSize = 100,
+  MaxFood = 100,
+  ClientVisibility = 20
 }
 
 local MyGame = Moat:new(
@@ -228,14 +230,14 @@ function spawnFood()
 end
 
 function MyGame:serverInitWorld()
-  for x = 1, 100 do
+  for x = 1, GameConstants.MaxFood do
      spawnFood();
   end
 end
 
 function MyGame:serverUpdate()
   
-  if (self:numEntitiesOfType(GameEntities.Food) < 100) then
+  if (self:numEntitiesOfType(GameEntities.Food) < GameConstants.MaxFood) then
     if (math.random() < 0.1) then
       spawnFood()
     end

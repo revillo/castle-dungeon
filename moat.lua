@@ -297,9 +297,9 @@ function Moat:initServer()
     share.entities = {};
     
     function self.serverEntityRelevance(ents, clientId)
-    
-      local playerState = self.entityForClient[clientId];
       result = {};
+
+      local playerState = self.entityForClient[clientId];
       
       if (not playerState) then
         return result;
@@ -354,7 +354,7 @@ function Moat:initServer()
       
       if (type == self.EntityTypes.Player and data and data.clientId) then
         self.entityForClient[data.clientId] = entity;
-        print("spawn", entity.clientId, entity.uuid);
+        --print("spawn", entity.clientId, entity.uuid);
       end
       
       return entity;
@@ -493,8 +493,8 @@ function Moat:initCommon()
     return gameState.entityCounts[type];
   end
   
-  function self:destroy(entity) 
-      print("destroy", entity.uuid);
+  function self:destroy(entity)   
+      --print("destroy", entity.uuid);
       gameState.space:remove(entity);
       gameState.entitiesByType[entity.type][entity.uuid] = nil;
       gameState.entities[entity.uuid] = nil;
@@ -622,7 +622,7 @@ function Moat:runServer()
       self:serverReceive(clientId, msg);
     end
     
-    --self.share.entities:__relevance(self.serverEntityRelevance);
+    self.share.entities:__relevance(self.serverEntityRelevance);
     
     self:serverInitWorld(self.gameState);
     
