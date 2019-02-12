@@ -220,7 +220,7 @@ end
 function Methods:__diff(client, exact, alreadyExact, caches)
     local proxy = proxies[self]
     exact = exact or proxy.dirtyRec
-
+    
     -- Initialize caches for this subtree if not already present
     if not caches then
         caches = proxy.caches
@@ -237,6 +237,7 @@ function Methods:__diff(client, exact, alreadyExact, caches)
     else
         ret = caches.diff[self]
     end
+
     if not ret then
         ret = {}
 
@@ -256,9 +257,12 @@ function Methods:__diff(client, exact, alreadyExact, caches)
         local children, dirty = proxy.children, proxy.dirty
         if relevance then -- Has a relevance function -- only go through children in relevancy
             -- In the below we make sure not to put `DIFF_NIL`s in an exact diff
-            local lastRelevancy = proxy.lastRelevancies[client]
+            --local lastRelevancy = proxy.lastRelevancies[client]
             local relevancy = relevance(self, client)
+            proxy.lastRelevancies[client] = proxy.nextRelevancies[client];
             proxy.nextRelevancies[client] = relevancy
+            local lastRelevancy = proxy.lastRelevancies[client];
+            
             for k in pairs(relevancy) do
                 -- Send exact if it was previously irrelevant and just became relevant
                 local exactHere = exact or (not lastRelevancy or not lastRelevancy[k])
@@ -331,6 +335,8 @@ function Methods:__flush(getDiff, client)
 
     -- Transer relevancy info to `.lastRelevancies`
     local nextRelevancies = proxy.nextRelevancies
+    
+    --[[
     if nextRelevancies then
         local lastRelevancies = proxy.lastRelevancies
         for client in pairs(nextRelevancies) do
@@ -345,7 +351,7 @@ function Methods:__flush(getDiff, client)
             nextRelevancies[client] = nil
         end
     end
-
+    ]]
     return diff
 end
 
