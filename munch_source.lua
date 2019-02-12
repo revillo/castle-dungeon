@@ -1,4 +1,4 @@
---castle://localhost:4000/moat_test.lua
+--castle://localhost:4000/munch_source.lua
 
 local Moat = require("moat");
 
@@ -9,8 +9,9 @@ local GameEntities = {
 }
 
 local GameConstants = {
-  PlayerSpeed = 0.1,
-  WorldSize = 100
+  WorldSize = 100,
+  MaxFood = 100,
+  ClientVisibility = 20
 }
 
 local MyGame = Moat:new(
@@ -18,15 +19,56 @@ local MyGame = Moat:new(
   GameConstants
 );
 
-local input = {};
---Update client for every game tick
-function MyGame:clientUpdate(gameState)
+local showMenu = true;
+local tileSizePx = 30.0;
+local cameraCenter = {x = 0, y = 0};
+local offsetPx = {x = 0, y = 0};
+local mousePos = {x = 0, y = 0};
 
+
+function MyGame:clientMouseMoved(x, y)
+  mousePos.x = x;
+  mousePos.y = y;
+end
+
+function MyGame:clientMousePressed(x, y)
+  if (self:clientIsConnected() and showMenu) then
+    
+    self:clientSend({
+      cmd = "request_spawn"
+    });
+    
+    showMenu = false;
+  end
+end
+
+function MyGame:serverReceive(clientId, msg)
+    
+  if (msg.cmd == "request_spawn") then
+    self:spawnPlayer(clientId);
+  end
+  
+end
+
+--Update client for every game tick
+local input = {};
+function MyGame:clientUpdate(gameState)
+  if (not self:clientIsSpawned()) then
+    return
+  end
+  
   --Set inputs
   input.w = love.keyboard.isDown("w");
   input.a = love.keyboard.isDown("a");
   input.s = love.keyboard.isDown("s");
   input.d = love.keyboard.isDown("d");
+  
+  --Scale the to-mouse vector a few tiles worth so we can modify speed based on distance
+  local mouseScale = tileSizePx * 5.0;
+  
+  input.mx = ((mousePos.x - offsetPx.x) / mouseScale);
+  input.my = ((mousePos.y - offsetPx.y) / mouseScale);
+  
   MyGame:setPlayerInput(input);
   
 end
@@ -49,9 +91,10 @@ function MyGame:playerUpdate(player, input)
   
   if (input) then 
     
-    --Move player based on keyboard input
-    local x, y = 0, 0;
+    --Try mouse (mx, my) values
+    local x, y = input.mx or 0, input.my or 0;
     
+    --Move player based on keyboard input
     if (input.w) then y = -1 end
     if (input.a) then x = -1 end
     if (input.s) then y = 1 end
@@ -59,7 +102,7 @@ function MyGame:playerUpdate(player, input)
     
     --Normalize movement vector
     local mag = math.sqrt(x * x + y * y);
-    if (mag > 0.0) then
+    if (mag > 1.0) then
       x, y = x/mag, y/mag;
     end
     
@@ -90,26 +133,16 @@ function MyGame:playerUpdate(player, input)
     end
     
     if (entity.type == GameEntities.Player) then
-      if (entity.w > player.w) then
-        -- Other user handles this case
-      elseif (entity.w < player.w) then
-        resizePlayer(player, player.w + entity.w / 5.0);
-        
-          MyGame:despawn(entity);
-
-          if MyGame.isServer then -- Can call spawn on client but it does nothing, spawning should happen on server
-            MyGame:spawnPlayer(entity.clientId);
-          end
+      if (player.w > entity.w) then
+          resizePlayer(player, player.w + entity.w / 5.0);
+          self:respawnPlayer(entity);
       end
     end
   end);
   
+  MyGame:rehashEntity(player);
+  
 end
-
-
-local tileSizePx = 30.0;
-local cameraCenter = {x = 0, y = 0};
-local offsetPx = {x = 0, y = 0};
 
 function drawRect(e)
   
@@ -151,7 +184,29 @@ function drawGrid()
   end
 end
 
+function drawText(text)
+    love.graphics.setColor(1,1,1,1);
+    love.graphics.print(text, 10, 10, 0, 2, 2);
+end
+
+
 function MyGame:clientDraw() 
+
+  if (not self:clientIsConnected()) then
+    drawText("Connecting... signed in to castle?");
+    return;
+  end
+  
+  if (showMenu) then
+    drawText("Click to spawn...")
+    return;
+  end
+
+  if (not self:clientIsSpawned()) then
+    drawText("Waiting for spawn...");
+    return;
+  end
+  
   local player = self:getPlayerState();
   cameraCenter.x = player.x + player.w * 0.5;
   cameraCenter.y = player.y + player.h * 0.5;
@@ -160,7 +215,7 @@ function MyGame:clientDraw()
   drawGrid();
   self:eachEntityOfType(GameEntities.Food, drawFood);
   self:eachEntityOfType(GameEntities.Player, drawPlayer);
-  drawPlayer(player);
+  drawPlayer(player);	
 end
 
 
@@ -175,14 +230,14 @@ function spawnFood()
 end
 
 function MyGame:serverInitWorld()
-  for x = 1, 100 do
+  for x = 1, GameConstants.MaxFood do
      spawnFood();
   end
 end
 
 function MyGame:serverUpdate()
   
-  if (self:numEntitiesOfType(GameEntities.Food) < 100) then
+  if (self:numEntitiesOfType(GameEntities.Food) < GameConstants.MaxFood) then
     if (math.random() < 0.1) then
       spawnFood()
     end
@@ -196,7 +251,7 @@ function MyGame:clientResize(x, y)
 end
 
 --Calls when a player spawns 
-function MyGame:resetPlayer(player)
+function MyGame:serverResetPlayer(player)
   player.x , player.y = math.random(GameConstants.WorldSize), math.random(GameConstants.WorldSize) 
   player.w , player.h = 1, 1;
 end
