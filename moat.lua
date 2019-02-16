@@ -11,11 +11,19 @@ function Utils.copyInto(toTable, fromTable)
   
   if (fromTable) then
     for k, v in pairs(fromTable) do
-        toTable[k] = v;
+        if (type(v) == "table") then
+          toTable[k] = Utils.copyInto({}, v);
+        else
+          toTable[k] = v;
+        end
     end  
   end
   return toTable;
   
+end
+
+function Utils.lerp(a, b, t)
+  return a * (1-t) + b * t;
 end
 
 function Utils.distance(entityA, entityB)
@@ -36,7 +44,8 @@ function PlayerHistory.new()
     }
   }
  
-  List.pushright(ph.inputHistory, nil);
+  ph.inputHistory.last = 0;
+  --List.pushright(ph.inputHistory, nil);
   
   return ph;
  
@@ -68,8 +77,10 @@ function PlayerHistory.updateInput(ph, input)
   
 end
 
-function PlayerHistory.rebuild(ph, state, tick, moat)
-  local idealTick = tick + math.ceil((moat:getPing()*0.001) / moat.Constants.TickInterval) + 2;
+function PlayerHistory.rebuild(ph, state, serverTick, moat)
+
+  -- Find the ideal tick offset between client and server, and decide whether or not to use it
+  local idealTick = serverTick + math.ceil((moat:getPing()*0.001) / moat.Constants.TickInterval) + 2;
   
   local idealDiff = idealTick - ph.tick;
   
@@ -81,19 +92,22 @@ function PlayerHistory.rebuild(ph, state, tick, moat)
   
   local oldTick = ph.tick;
   
+  --Rewind to the state at the old tick
   Utils.copyInto(ph.state, state);
-  ph.tick = tick;
+  ph.tick = serverTick;
   
-  
-  for pt = ph.inputHistory.last, tick do
+  --[[
+  for pt = ph.inputHistory.last, serverTick, -1 do
     if (not ph.inputHistory[pt]) then
       ph.inputHistory[pt] = {};
       Utils.copyInto(ph.inputHistory[pt], ph.inputHistory[pt-1]);
     end
   end
-  ph.inputHistory.last = tick;
+  ]]
+  
+  ph.inputHistory.last = serverTick;
 
-  for t = tick, idealTick do
+  for t = serverTick, idealTick do
       PlayerHistory.advance(ph, moat, ph.inputHistory);
   end
 
@@ -110,10 +124,10 @@ function PlayerHistory.advance(ph, moat, inputHistory)
   inputHistory[ph.tick] = inputHistory[ph.tick] or {};
   --Utils.copyInto(inputHistory[ph.tick], inputHistory[ph.tick-1]);
   
-  if (List.length(inputHistory) >= moat.Constants.MaxHistory) then
+  while (List.length(inputHistory) > moat.Constants.MaxHistory) do
     List.popleft(inputHistory) 
   end
-  
+    
   moat:worldUpdate(moat.gameState);
   
 end
@@ -160,20 +174,30 @@ function Moat:initClient()
   function self:clientTick(gameState)
     
   end
-  
-  
+    
   function self:despawn(entity)
     entity.despawned = gameState.tick;
   end
   
+  local smoothedPing = -1;
+  
+  function self:smoothPing()
+    if (smoothedPing < 0) then
+      smoothedPing = cs.client.getPing();
+    else
+      smoothedPing = Utils.lerp(smoothedPing, cs.client.getPing(), 0.2);
+    end
+  end
+  
   function self:getPing()
-    return cs.client.getPing();
+      return smoothedPing;
   end
   
   function self:clientUpdate()
   
   end
   
+
   --Client Tick
   function self:advanceGameState()
     
@@ -196,11 +220,17 @@ function Moat:initClient()
     PlayerHistory.updateInput(ph, input);
   end
   
+  local lastRebuildTick = -1;
+
   function self:clientSyncPlayer(serverPlayer)
-      self.doRebuild = {
-        serverState = serverPlayer,
-        tick = share.tick
-      };      
+      
+      if (share.tick ~= lastRebuildTick) then
+        self.doRebuild = {
+          serverState = serverPlayer,
+          tick = share.tick
+        };
+        lastRebuildTick = share.tick;
+      end
       
       self.gameState.entitiesByType[self.EntityTypes.Player][serverPlayer.uuid] = nil;
       self.gameState.entities[serverPlayer.uuid] = nil;
@@ -646,6 +676,8 @@ function Moat:runClient()
   function client.update(dt)
     if (client.connected and client.id) then
       
+      self:smoothPing();
+      
       if (not hasConnected) then
         hasConnected = true;
         self:clientSyncEntities();
@@ -715,5 +747,6 @@ function Moat:run()
 end
 
 Moat.Utils = Utils;
+Moat.PlayerHistory = PlayerHistory;
 
 return Moat;

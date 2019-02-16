@@ -11,7 +11,7 @@ local GameEntities = {
 local GameConstants = {
   WorldSize = 100,
   MaxFood = 100,
-  ClientVisibility = 20
+  ClientVisibility = 40
 }
 
 local MyGame = Moat:new(
@@ -43,7 +43,6 @@ function MyGame:clientMousePressed(x, y)
 end
 
 function MyGame:serverReceive(clientId, msg)
-    
   if (msg.cmd == "request_spawn") then
     self:spawnPlayer(clientId);
   end

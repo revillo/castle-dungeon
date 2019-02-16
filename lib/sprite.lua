@@ -54,6 +54,17 @@ Sprite = {
     return (x - Sprite.offsetPx.x) / ts, (y - Sprite.offsetPx.y) / ts;
   end,
   
+  
+  scissorBounds = function(visibility)
+    local x, y = Sprite.unitsToPx(-visibility, -visibility);
+    local x2, y2 = Sprite.unitsToPx(visibility, visibility);
+    love.graphics.setScissor(x, y, x2-x, y2-y);
+  end,
+
+  clearScissor = function()
+    love.graphics.setScissor();
+  end,
+  
   unitsToPx = function(x, y)
     local ts = Sprite.tileSizePx;
     return x * ts + Sprite.offsetPx.x, y * ts + Sprite.offsetPx.y;

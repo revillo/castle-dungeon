@@ -15,7 +15,7 @@ local GameEntities = {
 local GameConstants = {
   RoomSize = 12,
   WorldSize = 200,
-  ClientVisibility = 20,
+  ClientVisibility = 22,
   TickInterval = 1.0/60.0
 }
 
@@ -144,19 +144,26 @@ function DGame:clientDraw()
     drawText("Waiting for spawn...");
     return;
   end
-  
+    
   local player = self:getPlayerState();
 
   Sprite.cameraCenter.x = player.x + player.w * 0.5;
   Sprite.cameraCenter.y = player.y + player.h * 0.5;
   
+  Sprite.scissorBounds( GameConstants.ClientVisibility - 2);
+  
   drawEntities(GameEntities.Floor, Sprite.images.dirt);
+  
+  --Wall Effects
   drawEntities(GameEntities.Wall, Sprite.images.wall_front, 0.0, 1.0);
+  drawEntities(GameEntities.Wall, Sprite.images.wall_shadow, 0.0, 1.9);
+  
   drawEntities(GameEntities.Orb, Sprite.images.orb);
   drawEntities(GameEntities.Wall, Sprite.images.wall_top);
   drawEntities(GameEntities.Player, Sprite.images.wizard);
   Sprite.drawEntity(player, Sprite.images.wizard);
 
+  Sprite.clearScissor();
 end
 
 
@@ -256,6 +263,7 @@ function DGame:clientLoad()
   Sprite.loadImages({
     wall_top = "img/wall_top.png",
     wall_front = "img/wall_front.png",
+    wall_shadow = "img/wall_shadow.png",
     dirt = "img/dirt.png",
     wizard = "img/deep_elf_high_priest.png",
     orb = "img/conjure_ball_lightning.png"
