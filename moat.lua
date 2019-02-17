@@ -26,6 +26,15 @@ function Utils.lerp(a, b, t)
   return a * (1-t) + b * t;
 end
 
+function Utils.normalize(x, y)
+  local mag = math.sqrt(x * x + y * y);
+  if (mag > 0) then
+    x = x / mag;
+    y = y / mag;
+  end
+  return x, y;
+end
+
 function Utils.distance(entityA, entityB)
   local dx, dy = entityA.x - entityB.x, entityA.y - entityB.y;
   return math.sqrt(dx * dx + dy * dy);
@@ -128,7 +137,7 @@ function PlayerHistory.advance(ph, moat, inputHistory)
     List.popleft(inputHistory) 
   end
     
-  moat:worldUpdate(moat.gameState);
+  moat:worldUpdate(ph.tick);
   
 end
 
@@ -202,14 +211,17 @@ function Moat:initClient()
   function self:advanceGameState()
     
     self:clientSyncEntities();
-    
+      
     if (self.doRebuild) then
       PlayerHistory.rebuild(ph, self.doRebuild.serverState, self.doRebuild.tick, self);
       self.doRebuild = nil;
     else
-      if (ph.state.clientId == nil) then return end
-      PlayerHistory.advance(ph, self, ph.inputHistory); 
+    
+     if (ph.state.clientId == nil) then return end
+     PlayerHistory.advance(ph, self, ph.inputHistory)
+     
     end
+    
     gameState.tick = ph.tick;
 
     
@@ -220,24 +232,17 @@ function Moat:initClient()
     PlayerHistory.updateInput(ph, input);
   end
   
-  local lastRebuildTick = -1;
-
   function self:clientSyncPlayer(serverPlayer)
       
-      if (share.tick ~= lastRebuildTick) then
-        self.doRebuild = {
-          serverState = serverPlayer,
-          tick = share.tick
-        };
-        lastRebuildTick = share.tick;
-      end
-      
-      self.gameState.entitiesByType[self.EntityTypes.Player][serverPlayer.uuid] = nil;
-      self.gameState.entities[serverPlayer.uuid] = nil;
+      self.doRebuild = {
+        serverState = serverPlayer,
+        tick = share.tick
+      };
+
+      self.gameState.entitiesByType[self.EntityTypes.Player][serverPlayer.uuid] = ph.state;
+      self.gameState.entities[serverPlayer.uuid] = ph.state;
   end
-  
-  local cntr = 10;
-  
+    
   function self:clientIsSpawned()
     return isSpawned;
   end
@@ -270,21 +275,27 @@ function Moat:initClient()
       end
   end
   
+  local lastSyncTick = -1;
+  local share = cs.client.share;
   function self:clientSyncEntities()
-    local serverEntities = cs.client.share.entities;
-    local gameState = self.gameState;
-    isSpawned = false;
-
-    for uuid, e in pairs(serverEntities or {}) do
-      self:clientSyncEntity(e);
-    end
     
-    for uuid, e in pairs(gameState.entities) do
-      if (not serverEntities[uuid]) then
-        self:clientUnsyncEntityId(uuid);
+    if (share.tick ~= lastSyncTick) then
+      lastSyncTick = share.tick;
+      local serverEntities = cs.client.share.entities;
+      local gameState = self.gameState;
+      isSpawned = false;
+
+      for uuid, e in pairs(serverEntities or {}) do
+        self:clientSyncEntity(e);
+      end
+      
+      for uuid, e in pairs(gameState.entities) do
+        if (not serverEntities[uuid]) then
+          self:clientUnsyncEntityId(uuid);
+        end
       end
     end
-    
+
   end
   
   function self:respawnPlayer(entity)
@@ -439,8 +450,8 @@ function Moat:initServer()
     
     function self:advanceGameState() 
       self:serverUpdatePlayers();
-      self:worldUpdate(self.gameState);
-      self:serverUpdate(self.gameState);
+      self:worldUpdate(self.gameState.tick);
+      self:serverUpdate(self.gameState.tick);
     end
     
     function self:serverSend(clientId, msg)
@@ -554,10 +565,18 @@ function Moat:initCommon()
     end
   end
   
+  function self:moveEntity(entity, x, y, w, h)
+    entity.x = x or entity.x;
+    entity.y = y or entity.y;
+    entity.w = w or entity.w;
+    entity.h = h or entity.h;
+    self:rehashEntity(entity);
+  end
+  
   function self:rehashEntity(entity)
     space:update(entity, entity.x, entity.y, entity.w, entity.h);
   end
-    
+  
   function self:eachOverlapping(entity, fn)
     
     local ifActive = function(entity)
@@ -566,7 +585,7 @@ function Moat:initCommon()
       end
     end
   
-    if (space:contains(entity)) then
+    if (entity.uuid and space:contains(entity)) then
       space:each(entity, ifActive);
     else
       space:each(entity.x, entity.y, entity.w, entity.h, ifActive);

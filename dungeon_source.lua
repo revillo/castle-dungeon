@@ -6,10 +6,15 @@ local MazeGen = require("lib/maze_gen");
 
 local GameEntities = {
   Player = 0,
-  Enemy = 1,
+  Monster = 1,
   Wall = 2,
   Floor = 3,
-  Orb = 4
+  Spinner = 4,
+  Eye = 5,
+  EyeBullet = 6,
+  Gold = 7,
+  Chest = 8,
+  NPC = 9
 }
 
 local GameConstants = {
@@ -24,6 +29,8 @@ local DGame = Moat:new(
   GameConstants
 );
 
+local NPCText = nil;
+local NPCTextID = nil;
 local showMenu = true;
 
 function DGame:clientMousePressed(x, y)
@@ -58,10 +65,7 @@ function DGame:playerUpdate(player, input)
     if (input.d) then x = 1 end
     
     --Normalize movement vector
-    local mag = math.sqrt(x * x + y * y);
-    if (mag > 1.0) then
-      x, y = x/mag, y/mag;
-    end
+    x, y = DGame.Utils.normalize(x, y);
     
     local speed = GameConstants.TickInterval * 6.0;
     
@@ -70,31 +74,35 @@ function DGame:playerUpdate(player, input)
     player.x = player.x + speed * x;
     player.y = player.y + speed * y;
     
-    --dx is used to set the orientation of player sprite
+    --xflip is used by sprite.lua set the orientation of player sprite
     if (x > 0) then
-      player.dx = -1.0
+      player.xflip = -1.0
     elseif (x < 0) then
-      player.dx = 1.0;
+      player.xflip = 1.0;
     end
     
-    --Call rehash on any entity to update it for collision detection after moving
-    DGame:rehashEntity(player);
+    --Call move on any entity to update it for collision detection after changing x, y, w, h
+    DGame:moveEntity(player);
     
     DGame:eachOverlapping(player, function(entity)
       if (entity.type == GameEntities.Wall) then
-        player.x, player.y = oldX, oldY;
-        DGame:rehashEntity(player);
+        DGame:moveEntity(player, oldX, oldY);
       end
     end); 
     
   end -- if input
   
   local didRespawn = false;
+  NPCText = nil;
+  NPCTextID = nil;
+  
   DGame:eachOverlapping(player, function(entity)
     --Avoid respawning twice if multiple hazards hit us
     if (didRespawn) then return end;
 
-    if (entity.type == GameEntities.Orb) then
+    local type = entity.type;
+    
+    if (type == GameEntities.Spinner or type == GameEntities.Monster or type == GameEntities.EyeBullet) then
       --Higher fidelity hit detection
       if (DGame:getOverlapArea(player, entity) > 0.2) then
         DGame:respawnPlayer(player);
@@ -102,6 +110,16 @@ function DGame:playerUpdate(player, input)
         return;
       end
     end
+    
+    if (entity.type == GameEntities.Gold) then
+      DGame:despawn(entity);
+    end
+    
+    if (entity.type == GameEntities.NPC and DGame.isClient) then
+      NPCText = entity.dialogue;
+      NPCTextID = entity.uuid;
+    end
+    
   end);
 
 end
@@ -127,6 +145,33 @@ end
 
 function drawEntities(type, ...)
   DGame:eachEntityOfType(type, Sprite.drawEntity, ...);
+end
+
+local dialogueId;
+local dialogueCursor = 1;
+
+function drawDialogue(text, id)
+  if (text) then
+  
+    local displayText;
+    
+    if (dialogueId == id) then
+      dialogueCursor = dialogueCursor + 0.3;
+      displayText = string.sub(text, 1, math.floor(dialogueCursor));
+    else
+      dialogueId = id;
+      dialogueCursor = 1;
+      displayText = ""
+    end
+    
+    local w, h = love.graphics.getDimensions();
+
+    love.graphics.setColor(0,0,0,0.8);
+    love.graphics.rectangle("fill", 0, h-100, 500, 100);
+    love.graphics.setColor(1,1,1,1);
+    love.graphics.rectangle("line", 0, h-100, 500, 100);
+    love.graphics.print(displayText, 10, h-90, 0, 1, 1);
+  end
 end
 
 function DGame:clientDraw()
@@ -158,11 +203,19 @@ function DGame:clientDraw()
   drawEntities(GameEntities.Wall, Sprite.images.wall_front, 0.0, 1.0);
   drawEntities(GameEntities.Wall, Sprite.images.wall_shadow, 0.0, 1.9);
   
-  drawEntities(GameEntities.Orb, Sprite.images.orb);
-  drawEntities(GameEntities.Wall, Sprite.images.wall_top);
-  drawEntities(GameEntities.Player, Sprite.images.wizard);
-  Sprite.drawEntity(player, Sprite.images.wizard);
+  drawEntities(GameEntities.Spinner, Sprite.images.skeleton_bat);
+  drawEntities(GameEntities.Monster, Sprite.images.skeleton_dragon);
+  drawEntities(GameEntities.NPC, Sprite.images.npc);
+  drawEntities(GameEntities.Chest, Sprite.images.chest);
+  drawEntities(GameEntities.Gold, Sprite.images.gold);
 
+  drawEntities(GameEntities.Eye, Sprite.images.shining_eye);
+  drawEntities(GameEntities.EyeBullet, Sprite.images.orb);
+  drawEntities(GameEntities.Player, Sprite.images.wizard);
+  drawEntities(GameEntities.Wall, Sprite.images.wall_top);
+
+  drawDialogue(NPCText, NPCTextID);
+  
   Sprite.clearScissor();
 end
 
@@ -175,24 +228,89 @@ function addWall(x, y, w, h, isDoor)
     );
 end
 
-function addHazards(x, y, roomSize)
-  
-  local direction = (math.random() - 0.5) * 2.0;
-  
-  for i = 1, 5 do
-  --Add an orb and set the circle center and radius properties
-    DGame:spawn(GameEntities.Orb, x, y, 1.0, 1.0, {
-      centerX = x - 1.0,
-      centerY = y - 0.5,
-      angle = (i / 5) * math.pi * 2.0,
-      direction = direction,
-      radius = roomSize * 0.3 
-    });
+local NPCDialogues = {
+  "Good luck adventurer!",
+  "May ye enjoy this bitch'n loot.",
+  "There is no shame in partaking of treasure.",
+  "Gnosh on some dosh wizard.",
+  "I'm actually a vegan.",
+  "Come back any time.",
+  "Call me?",
+  "I have more money than sense.",
+  "Coins. Have them.",
+  "There is meaning in your quest. Probably.",
+  "What has six faces but cannot see?",
+  "What has many keys but opens no doors?",
+  "What do leave behind for every one you take?",
+  "You're gonna pay me back right?"
+}
+
+function serverAddHazards(room, x, y, roomSize)
+
+  if (room.x == 1 and room.y == 1) then
+    return;
   end
   
+  local centerX = x + roomSize * 0.5 - 1.0;
+  local centerY = y + roomSize * 0.5 - 0.5;
+  
+  local roomArea = {
+    x = x + 1.0,
+    y = y + 1.0,
+    w = roomSize - 2.0,
+    h = roomSize - 2.0
+  }
+  
+  -- Make a treasure room?
+  if (room.x > 2 and room.y > 2 and math.random() < 0.15) then
+    DGame:spawn(GameEntities.Chest, centerX-0.5, centerY, 1.0, 1.0, {
+        searchArea = roomArea
+    });
+    
+    DGame:spawn(GameEntities.NPC, centerX+0.5, centerY, 1.0, 1.0, {
+        dialogue = NPCDialogues[math.random(#NPCDialogues)];
+    });
+    
+    return;
+  end
+  
+  
+  local whichHazard = math.random(3);
+  
+  if (whichHazard == 1) then
+    -- Add Orb Wheel
+    local spinDir = (math.random() - 0.5) * 2.0;
+    
+    for i = 1, 5 do
+      --Spawn a spinner type enemy and set custom circle center and radius properties
+      DGame:spawn(GameEntities.Spinner, centerX, centerY, 1.0, 1.0, {
+        centerX = centerX,
+        centerY = centerY,
+        angle = (i / 5) * math.pi * 2.0,
+        spinDir = spinDir,
+        radius = roomSize * 0.3 
+      });
+    end
+  elseif (whichHazard == 2) then
+  
+    -- Spawn a monster enemy and provide room area info    
+      DGame:spawn(GameEntities.Monster, centerX, centerY, 1.0, 1.0, {
+        health = 5,
+        searchArea = roomArea
+      });
+  
+  elseif (whichHazard == 3) then
+    -- Spawn an Eye enemy    
+      DGame:spawn(GameEntities.Eye, centerX, centerY, 1.0, 1.0, {
+        health = 5,
+        searchArea = roomArea
+      });
+  else
+    
+  end
 end
 
-local createMaze = function(mazeWidth, mazeHeight)
+function serverCreateMaze(mazeWidth, mazeHeight)
   
   local roomSize = GameConstants.RoomSize;
   local mazeRooms = MazeGen(mazeWidth, mazeHeight);
@@ -208,7 +326,7 @@ local createMaze = function(mazeWidth, mazeHeight)
       x, y, roomSize, roomSize
     );
     
-    addHazards(x + roomSize * 0.5, y + roomSize * 0.5, roomSize);
+    serverAddHazards(room, x, y, roomSize);
     
     local d = 3;
     local e = math.floor((roomSize - d) * 0.5);
@@ -231,10 +349,8 @@ local createMaze = function(mazeWidth, mazeHeight)
   
 end
 
-
-
 function DGame:serverInitWorld()
-  createMaze(7, 7);
+  serverCreateMaze(10, 10);
 end
 
 function DGame:serverResetPlayer(player)
@@ -246,16 +362,136 @@ function DGame:clientResize(x, y)
   Sprite.offsetPx.y = y * 0.5;
 end
 
-function DGame:worldUpdate(gameState)
-  DGame:eachEntityOfType(GameEntities.Orb, function(orb)
+function findNearestPlayer(entity, searchArea)
+    local closestPlayer = nil;
+    local closestPlayerDistance = 100;
     
-    local t = (gameState.tick * GameConstants.TickInterval) * orb.direction;
+    DGame:eachOverlapping(searchArea, function(foundEntity)
+      
+      if (foundEntity.type == GameEntities.Player) then
+        local distance = DGame.Utils.distance(entity, foundEntity);
+        if (distance < closestPlayerDistance) then
+          closestPlayer = foundEntity;
+          closestPlayerDistance = distance;
+        end
+      end
+      
+    end);
     
-    orb.x, orb.y = math.sin(t + orb.angle) * orb.radius + orb.centerX, math.cos(t + orb.angle) * orb.radius + orb.centerY;
+    return closestPlayer;
+end
+
+
+function updateMonster(monster, tick)
     
-    DGame:rehashEntity(orb);
+    local closestPlayer = findNearestPlayer(monster, monster.searchArea);
+    
+    local oldX, oldY = monster.x, monster.y;
+    
+    if (closestPlayer) then
+        local dx = closestPlayer.x - monster.x;
+        local dy = closestPlayer.y - monster.y;
+        dx, dy = DGame.Utils.normalize(dx, dy);        
+        local x = monster.x + dx * GameConstants.TickInterval * 2.5;
+        local y = monster.y + dy * GameConstants.TickInterval * 2.5;
+        DGame:moveEntity(monster, x, y);
+    end
+    
+    DGame:eachOverlapping(monster, function(entity) 
+      
+     if (entity.type == GameEntities.Wall) then
+        monster.x, monster.y = oldX, oldY;
+        DGame:moveEntity(monter);
+      end
+    
+    end);
+    
+end
+
+function updateSpinner(spinner, tick)
+    
+    local t = (tick * GameConstants.TickInterval) * spinner.spinDir;
+    
+    local x, y = math.sin(t + spinner.angle) * spinner.radius + spinner.centerX, math.cos(t + spinner.angle) * spinner.radius + spinner.centerY;
+    
+    DGame:moveEntity(spinner, x, y);
+  
+end
+
+function updateEye(eye, tick)
+
+  --Fire every second
+  if (tick % 40 == 0) then
+  
+    local closestPlayer = findNearestPlayer(eye, eye.searchArea);
+    
+    if (closestPlayer) then
+        local dx = closestPlayer.x - eye.x;
+        local dy = closestPlayer.y - eye.y;
+        dx, dy = DGame.Utils.normalize(dx, dy);   
+        
+        DGame:spawn(GameEntities.EyeBullet, eye.x, eye.y, 1, 1, {
+           dx = dx,
+           dy = dy,
+        });
+    end
+    
+  end
+  
+end
+
+function updateEyeBullet(eyeBullet)
+  
+  eyeBullet.x = eyeBullet.x + eyeBullet.dx * GameConstants.TickInterval * 3.0;
+  eyeBullet.y = eyeBullet.y + eyeBullet.dy * GameConstants.TickInterval * 3.0;
+  
+  DGame:moveEntity(eyeBullet);
+  
+  local hitOnce = false;
+  
+  DGame:eachOverlapping(eyeBullet, function(entity) 
+    if (hitOnce) then return end;
+    
+    if (entity.type == GameEntities.Wall) then
+      hitOnce = true;
+      DGame:despawn(eyeBullet);
+    end
   
   end);
+  
+end
+
+function updateChest(chest, tick)
+  
+  if (tick % 1000 == 0) then
+    
+    local goldCount = 0;
+    DGame:eachOverlapping(chest.searchArea, function (entity)
+      if (entity.type == GameEntities.Gold) then
+        goldCount = goldCount + 1;
+      end
+    end);
+    
+    if (goldCount < 4) then
+      
+      local x = chest.searchArea.x + (chest.searchArea.w-1) * math.random();
+      local y = chest.searchArea.y + (chest.searchArea.h-1) * math.random();
+      
+      DGame:spawn(GameEntities.Gold, x,  y, 1, 1);
+    end
+    
+  end
+
+end
+
+function DGame:worldUpdate(tick)
+
+  DGame:eachEntityOfType(GameEntities.Spinner, updateSpinner, tick);
+  DGame:eachEntityOfType(GameEntities.Monster, updateMonster, tick);
+  DGame:eachEntityOfType(GameEntities.Eye, updateEye, tick);
+  DGame:eachEntityOfType(GameEntities.EyeBullet, updateEyeBullet);
+  DGame:eachEntityOfType(GameEntities.Chest, updateChest, tick);
+  
 end
 
 function DGame:clientLoad()
@@ -266,9 +502,18 @@ function DGame:clientLoad()
     wall_shadow = "img/wall_shadow.png",
     dirt = "img/dirt.png",
     wizard = "img/deep_elf_high_priest.png",
-    orb = "img/conjure_ball_lightning.png"
+    orb = "img/conjure_ball_lightning.png",
+    skeleton_bat = "img/skeleton_bat.png",
+    skeleton_dragon = "img/ogre_mage.png",
+    shining_eye = "img/shining_eye.png",
+    gold = "img/gold_pile_16.png",
+    chest = "img/chest_2_open.png",
+    npc = "img/hippogriff_old.png"
   });
 
+  -- Fixes subtle texture glitch on the wall shadow
+  Sprite.images.wall_shadow:setWrap("repeat", "clampzero");
+  
   local w, h = love.graphics.getDimensions();
   DGame:clientResize(w, h);
 end

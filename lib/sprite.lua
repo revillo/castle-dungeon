@@ -18,12 +18,15 @@ Sprite = {
     end
   end,
   
-  loadImage = function(path)
+  loadImage = function(path, clampEdges)
     
     local img = love.graphics.newImage(path);
-    img:setWrap("repeat", "repeat");
-    img:setFilter("nearest", "nearest");
-       
+    
+    if (not clampEdges) then
+      img:setWrap("repeat", "repeat");
+      img:setFilter("nearest", "nearest");
+    end
+    
     return img;
   
   end,
@@ -77,7 +80,7 @@ Sprite = {
     oy = oy or 0;
     
     local x, y = Sprite.unitsToPx(ox + entity.x - Sprite.cameraCenter.x, oy + entity.y - Sprite.cameraCenter.y);   
-    Sprite.drawTiles(img, x, y, entity.w, entity.h, scale * (entity.dx or 1.0), scale);
+    Sprite.drawTiles(img, x, y, entity.w, entity.h, scale * (entity.xflip or 1.0), scale);
   end
 }
 
