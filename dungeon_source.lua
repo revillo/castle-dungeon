@@ -14,14 +14,20 @@ local GameEntities = {
   EyeBullet = 6,
   Gold = 7,
   Chest = 8,
-  NPC = 9
+  NPC = 9,
+  IceBullet = 10
 }
 
+local TimeStep = 1.0 / 60.0;
 local GameConstants = {
   RoomSize = 12,
   WorldSize = 200,
   ClientVisibility = 22,
-  TickInterval = 1.0/60.0
+  TickInterval = TimeStep,
+  MonsterSpeed = TimeStep * 3.0,
+  PlayerSpeed = TimeStep * 6.0,
+  IceBulletSpeed = TimeStep * 10.0,
+  EyeBulletSpeed = TimeStep * 4.0
 }
 
 local DGame = Moat:new(
@@ -32,16 +38,22 @@ local DGame = Moat:new(
 local NPCText = nil;
 local NPCTextID = nil;
 local showMenu = true;
+local mouseEvent = nil;
 
 function DGame:clientMousePressed(x, y)
   if (self:clientIsConnected() and showMenu) then
     
+    -- Initial handshake to connect
     self:clientSend({
       cmd = "request_spawn"
     });
     
     showMenu = false;
-  end
+  else
+    
+    mouseEvent = {x = x, y = y};
+  
+  end  
 end
 
 function DGame:serverReceive(clientId, msg)
@@ -52,11 +64,8 @@ function DGame:serverReceive(clientId, msg)
   
 end
 
-function DGame:playerUpdate(player, input)
-
-  if (input) then 
-    --Try mouse (mx, my) values
-    local x, y = input.mx or 0, input.my or 0;
+function handlePlayerInput(player, input)
+    local x, y = 0, 0;
     
     --Move player based on keyboard input
     if (input.w) then y = -1 end
@@ -66,13 +75,11 @@ function DGame:playerUpdate(player, input)
     
     --Normalize movement vector
     x, y = DGame.Utils.normalize(x, y);
-    
-    local speed = GameConstants.TickInterval * 6.0;
-    
+        
     local oldX, oldY = player.x, player.y;
     
-    player.x = player.x + speed * x;
-    player.y = player.y + speed * y;
+    player.x = player.x + GameConstants.PlayerSpeed * x;
+    player.y = player.y + GameConstants.PlayerSpeed * y;
     
     --xflip is used by sprite.lua set the orientation of player sprite
     if (x > 0) then
@@ -84,13 +91,29 @@ function DGame:playerUpdate(player, input)
     --Call move on any entity to update it for collision detection after changing x, y, w, h
     DGame:moveEntity(player);
     
+    --Reset player if movement would intersect a wall
     DGame:eachOverlapping(player, function(entity)
       if (entity.type == GameEntities.Wall) then
         DGame:moveEntity(player, oldX, oldY);
       end
     end); 
     
-  end -- if input
+    --Handle shooting ice
+    if (input.mx) then
+      local dx, dy = DGame.Utils.normalize(input.mx, input.my);
+      
+      DGame:spawn(GameEntities.IceBullet, player.x, player.y, 1, 1, {
+        dx = dx,
+        dy = dy
+      });
+    end
+end
+
+function DGame:playerUpdate(player, input)
+
+  if (input) then 
+    handlePlayerInput(player, input);
+  end
   
   local didRespawn = false;
   NPCText = nil;
@@ -135,24 +158,37 @@ function DGame:clientUpdate()
   input.a = love.keyboard.isDown("a");
   input.s = love.keyboard.isDown("s");
   input.d = love.keyboard.isDown("d");
+  
+  --Handle mouse click direction
+  if (mouseEvent) then
+    input.mx, input.my = Sprite.pxToUnits(mouseEvent.x, mouseEvent.y);
+    
+    --Player center is at 0.5, 0.5
+    input.mx = input.mx + 0.5;
+    input.my = input.my + 0.5;
+    mouseEvent = nil;
+  else
+    input.mx = nil;
+    input.my = nil;
+  end
+    
   DGame:setPlayerInput(input);
 end
 
+-- Drawing/Rendering functions
+
+--For debug / top left corner text
 function drawText(text)
     love.graphics.setColor(1,1,1,1);
     love.graphics.print(text, 10, 10, 0, 2, 2);
 end
 
-function drawEntities(type, ...)
-  DGame:eachEntityOfType(type, Sprite.drawEntity, ...);
-end
-
 local dialogueId;
 local dialogueCursor = 1;
 
+--Draws the scrolling text prompts when talking to npcs
 function drawDialogue(text, id)
   if (text) then
-  
     local displayText;
     
     if (dialogueId == id) then
@@ -164,14 +200,34 @@ function drawDialogue(text, id)
       displayText = ""
     end
     
-    local w, h = love.graphics.getDimensions();
-
+    local screenWidth, screenHeight = love.graphics.getDimensions();
+    local halfWidth = screenWidth * 0.5;
+    
     love.graphics.setColor(0,0,0,0.8);
-    love.graphics.rectangle("fill", 0, h-100, 500, 100);
+    love.graphics.rectangle("fill", halfWidth-250, screenHeight-100, 500, 100);
     love.graphics.setColor(1,1,1,1);
-    love.graphics.rectangle("line", 0, h-100, 500, 100);
-    love.graphics.print(displayText, 10, h-90, 0, 1, 1);
+    love.graphics.rectangle("line", halfWidth-250, screenHeight-100, 500, 100);
+    love.graphics.print(displayText, halfWidth-240, screenHeight-90, 0, 1, 1);
+  else
+    dialogueId = nil;
+    dialogueCursor = nil;
   end
+end
+
+-- This intermediate function can draw any additional effects
+function drawWithEffects(entity, ...)
+
+  Sprite.drawEntity(entity, ...);
+  
+  -- Draw ice over frozen enemies
+  if (entity.freezeCounter and entity.freezeCounter > 0) then
+    Sprite.drawEntity(entity, Sprite.images.ice);
+  end
+end
+
+-- Basic pass through function that calls drawWithEffects on all entity of type
+function drawEntities(type, ...)
+  DGame:eachEntityOfType(type, drawWithEffects, ...);
 end
 
 function DGame:clientDraw()
@@ -195,16 +251,17 @@ function DGame:clientDraw()
   Sprite.cameraCenter.x = player.x + player.w * 0.5;
   Sprite.cameraCenter.y = player.y + player.h * 0.5;
   
+  --Crop the viewing area to the client visibility
   Sprite.scissorBounds( GameConstants.ClientVisibility - 2);
   
   drawEntities(GameEntities.Floor, Sprite.images.dirt);
   
-  --Wall Effects
+  -- Front facing wall effects
   drawEntities(GameEntities.Wall, Sprite.images.wall_front, 0.0, 1.0);
   drawEntities(GameEntities.Wall, Sprite.images.wall_shadow, 0.0, 1.9);
   
   drawEntities(GameEntities.Spinner, Sprite.images.skeleton_bat);
-  drawEntities(GameEntities.Monster, Sprite.images.skeleton_dragon);
+  drawEntities(GameEntities.Monster, Sprite.images.ogre);
   drawEntities(GameEntities.NPC, Sprite.images.npc);
   drawEntities(GameEntities.Chest, Sprite.images.chest);
   drawEntities(GameEntities.Gold, Sprite.images.gold);
@@ -212,6 +269,7 @@ function DGame:clientDraw()
   drawEntities(GameEntities.Eye, Sprite.images.shining_eye);
   drawEntities(GameEntities.EyeBullet, Sprite.images.orb);
   drawEntities(GameEntities.Player, Sprite.images.wizard);
+  drawEntities(GameEntities.IceBullet, Sprite.images.ice);
   drawEntities(GameEntities.Wall, Sprite.images.wall_top);
 
   drawDialogue(NPCText, NPCTextID);
@@ -230,7 +288,7 @@ end
 
 local NPCDialogues = {
   "Good luck adventurer!",
-  "May ye enjoy this bitch'n loot.",
+  "May ye enjoy this tasty loot.",
   "There is no shame in partaking of treasure.",
   "Gnosh on some dosh wizard.",
   "I'm actually a vegan.",
@@ -384,6 +442,11 @@ end
 
 function updateMonster(monster, tick)
     
+    if (monster.freezeCounter and monster.freezeCounter > 0) then
+      monster.freezeCounter = monster.freezeCounter - 1;
+      return;
+    end
+    
     local closestPlayer = findNearestPlayer(monster, monster.searchArea);
     
     local oldX, oldY = monster.x, monster.y;
@@ -392,8 +455,8 @@ function updateMonster(monster, tick)
         local dx = closestPlayer.x - monster.x;
         local dy = closestPlayer.y - monster.y;
         dx, dy = DGame.Utils.normalize(dx, dy);        
-        local x = monster.x + dx * GameConstants.TickInterval * 2.5;
-        local y = monster.y + dy * GameConstants.TickInterval * 2.5;
+        local x = monster.x + dx * GameConstants.MonsterSpeed;
+        local y = monster.y + dy * GameConstants.MonsterSpeed;
         DGame:moveEntity(monster, x, y);
     end
     
@@ -420,6 +483,11 @@ end
 
 function updateEye(eye, tick)
 
+  if (eye.freezeCounter and eye.freezeCounter > 0) then
+    eye.freezeCounter = eye.freezeCounter - 1;
+    return;
+  end
+    
   --Fire every second
   if (tick % 40 == 0) then
   
@@ -442,8 +510,8 @@ end
 
 function updateEyeBullet(eyeBullet)
   
-  eyeBullet.x = eyeBullet.x + eyeBullet.dx * GameConstants.TickInterval * 3.0;
-  eyeBullet.y = eyeBullet.y + eyeBullet.dy * GameConstants.TickInterval * 3.0;
+  eyeBullet.x = eyeBullet.x + eyeBullet.dx * GameConstants.EyeBulletSpeed;
+  eyeBullet.y = eyeBullet.y + eyeBullet.dy * GameConstants.EyeBulletSpeed
   
   DGame:moveEntity(eyeBullet);
   
@@ -484,6 +552,38 @@ function updateChest(chest, tick)
 
 end
 
+function updateIceBullet(bullet, tick)
+  
+  local dx = bullet.dx * GameConstants.IceBulletSpeed;
+  local dy = bullet.dy * GameConstants.IceBulletSpeed;
+  
+  DGame:moveEntity(bullet, bullet.x + dx, bullet.y + dy);
+
+  local hitOnce = false;
+  DGame:eachOverlapping(bullet, function(entity) 
+    if (hitOnce) then return end;
+    
+    --Check if enough area is overlapping to count
+    if (DGame:getOverlapArea(bullet, entity) < 0.4) then
+      return;
+    end
+    
+    if (entity.type == GameEntities.Wall) then
+      hitOnce = true;
+      DGame:despawn(bullet);
+    end
+    
+    if (entity.type == GameEntities.Monster or entity.type == GameEntities.Eye) then
+      entity.freezeCounter = 120; -- Put a freeze countdown on enemey entity 
+      hitOnce = true;
+      DGame:despawn(bullet);
+    end
+  
+  end);
+  
+end
+
+--Update non-player entitiess
 function DGame:worldUpdate(tick)
 
   DGame:eachEntityOfType(GameEntities.Spinner, updateSpinner, tick);
@@ -491,10 +591,12 @@ function DGame:worldUpdate(tick)
   DGame:eachEntityOfType(GameEntities.Eye, updateEye, tick);
   DGame:eachEntityOfType(GameEntities.EyeBullet, updateEyeBullet);
   DGame:eachEntityOfType(GameEntities.Chest, updateChest, tick);
+  DGame:eachEntityOfType(GameEntities.IceBullet, updateIceBullet, tick);
   
 end
 
 function DGame:clientLoad()
+  love.mouse.setCursor(love.mouse.getSystemCursor("crosshair"));
 
   Sprite.loadImages({
     wall_top = "img/wall_top.png",
@@ -504,11 +606,12 @@ function DGame:clientLoad()
     wizard = "img/deep_elf_high_priest.png",
     orb = "img/conjure_ball_lightning.png",
     skeleton_bat = "img/skeleton_bat.png",
-    skeleton_dragon = "img/ogre_mage.png",
+    ogre = "img/ogre_mage.png",
     shining_eye = "img/shining_eye.png",
     gold = "img/gold_pile_16.png",
     chest = "img/chest_2_open.png",
-    npc = "img/hippogriff_old.png"
+    npc = "img/hippogriff_old.png",
+    ice = "img/ozocubus_refrigeration.png"
   });
 
   -- Fixes subtle texture glitch on the wall shadow

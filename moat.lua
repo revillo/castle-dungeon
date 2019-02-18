@@ -196,6 +196,7 @@ function Moat:initClient()
     else
       smoothedPing = Utils.lerp(smoothedPing, cs.client.getPing(), 0.2);
     end
+    --print(smoothedPing);
   end
   
   function self:getPing()
@@ -206,23 +207,21 @@ function Moat:initClient()
   
   end
   
-
   --Client Tick
   function self:advanceGameState()
     
     self:clientSyncEntities();
-      
-    if (self.doRebuild) then
+    
+    if (self.doRebuild) then  
       PlayerHistory.rebuild(ph, self.doRebuild.serverState, self.doRebuild.tick, self);
       self.doRebuild = nil;
     else
-    
      if (ph.state.clientId == nil) then return end
      PlayerHistory.advance(ph, self, ph.inputHistory)
-     
     end
     
     gameState.tick = ph.tick;
+    --print("tick", ph.tick);
 
     
     self:clientUpdate(self.gameState);
@@ -233,12 +232,12 @@ function Moat:initClient()
   end
   
   function self:clientSyncPlayer(serverPlayer)
-      
+            
       self.doRebuild = {
         serverState = serverPlayer,
         tick = share.tick
       };
-
+      
       self.gameState.entitiesByType[self.EntityTypes.Player][serverPlayer.uuid] = ph.state;
       self.gameState.entities[serverPlayer.uuid] = ph.state;
   end
@@ -667,6 +666,11 @@ function Moat:runServer()
       self:update(dt);
     end
     
+    function server.backgroundupdate(dt)
+      --print("bg update", dt);
+      self:update(dt)
+    end
+    
     function server.receive(clientId, msg)
       self:serverReceive(clientId, msg);
     end
@@ -693,6 +697,7 @@ function Moat:runClient()
   local hasConnected = false;
   
   function client.update(dt)
+    --print("dt", dt);
     if (client.connected and client.id) then
       
       self:smoothPing();
