@@ -88,7 +88,11 @@ end
 
 function PlayerHistory.rebuild(ph, state, serverTick, moat)
 
+
+  moat:rehashEntity(state);
+  
   -- Find the ideal tick offset between client and server, and decide whether or not to use it
+  
   local idealTick = serverTick + math.ceil((moat:getPing()*0.001) / moat.Constants.TickInterval) + 2;
   
   local idealDiff = idealTick - ph.tick;
@@ -124,20 +128,20 @@ end
 
 function PlayerHistory.advance(ph, moat, inputHistory)
   
+  moat.gameState.tick = ph.tick;
+
   moat:playerUpdate(ph.state, inputHistory[ph.tick]);
-  --moat:rehashEntity(ph.state);
-  
-  --List.pushright(inputHistory, nil);
+  moat:worldUpdate(ph.tick);
+
   ph.tick = ph.tick + 1;
   inputHistory.last = ph.tick;
   inputHistory[ph.tick] = inputHistory[ph.tick] or {};
-  --Utils.copyInto(inputHistory[ph.tick], inputHistory[ph.tick-1]);
   
   while (List.length(inputHistory) > moat.Constants.MaxHistory) do
     List.popleft(inputHistory) 
   end
     
-  moat:worldUpdate(ph.tick);
+  moat.gameState.tick = ph.tick;
   
 end
 
@@ -220,7 +224,7 @@ function Moat:initClient()
      PlayerHistory.advance(ph, self, ph.inputHistory)
     end
     
-    gameState.tick = ph.tick;
+    --gameState.tick = ph.tick;
     --print("tick", ph.tick);
 
     
@@ -547,7 +551,7 @@ function Moat:initCommon()
     end
   
     for uuid, entity in pairs(gameState.entitiesByType[type]) do
-      if (not entity.despawned or gameState.tick < entity.despawned) then
+      if (not entity.despawned or gameState.tick <= entity.despawned) then
         fn(entity, ...);
       end
     end
@@ -579,7 +583,7 @@ function Moat:initCommon()
   function self:eachOverlapping(entity, fn)
     
     local ifActive = function(entity)
-      if (not entity.despawned) then
+      if (not entity.despawned or gameState.tick <= entity.despawned) then
         fn(entity);
       end
     end
@@ -667,7 +671,6 @@ function Moat:runServer()
     end
     
     function server.backgroundupdate(dt)
-      --print("bg update", dt);
       self:update(dt)
     end
     
