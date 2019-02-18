@@ -11,7 +11,9 @@ local GameEntities = {
 local GameConstants = {
   WorldSize = 100,
   MaxFood = 100,
-  ClientVisibility = 40
+  ClientVisibility = 40,
+  FoodGain = 0.02,
+  SizeLoss = 0.0001
 }
 
 local MyGame = Moat:new(
@@ -112,7 +114,7 @@ function MyGame:playerUpdate(player, input)
 
   
   --Each player loses a small amount of size over time
-  local sizeLoss = 0.0001;
+  local sizeLoss = GameConstants.SizeLoss;
   resizePlayer(player, math.max(1.0, player.w - sizeLoss))
   
   
@@ -128,7 +130,7 @@ function MyGame:playerUpdate(player, input)
     
     if (entity.type == GameEntities.Food) then
       MyGame:despawn(entity);
-      resizePlayer(player, player.w + 0.02);
+      resizePlayer(player, player.w + GameConstants.FoodGain);
     end
     
     if (entity.type == GameEntities.Player) then
@@ -214,7 +216,6 @@ function MyGame:clientDraw()
   drawGrid();
   self:eachEntityOfType(GameEntities.Food, drawFood);
   self:eachEntityOfType(GameEntities.Player, drawPlayer);
-  drawPlayer(player);	
 end
 
 
