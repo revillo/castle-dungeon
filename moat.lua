@@ -6,6 +6,19 @@ local PlayerHistory = {};
 local Moat = {};
 
 local Utils = {};
+local Entity = {};
+local Math2D = {};
+local Math = {};
+
+function Math.clamp(a, lo, hi) 
+  
+  if (a < lo) then return lo
+  elseif (a > hi) then return hi 
+  end
+ 
+  return a;
+
+end
 
 function Utils.copyInto(toTable, fromTable)
   
@@ -25,6 +38,19 @@ end
 function Utils.lerp(a, b, t)
   return a * (1-t) + b * t;
 end
+Math2D.lerp = Utils.lerp;
+
+-- Rotate over angle a in radians
+function Math2D.rotate(x, y, a)
+  local tx = x;
+  local x = x * math.cos(a) - y * math.sin(a);
+  local y = tx * math.sin(a) + y * math.cos(a);
+  return x, y;
+end
+
+function Math2D.length(x, y)
+  return math.sqrt(x * x + y * y);
+end
 
 function Utils.normalize(x, y)
   local mag = math.sqrt(x * x + y * y);
@@ -35,9 +61,41 @@ function Utils.normalize(x, y)
   return x, y;
 end
 
+Math2D.normalize = Utils.normalize;
+
 function Utils.distance(entityA, entityB)
   local dx, dy = entityA.x - entityB.x, entityA.y - entityB.y;
   return math.sqrt(dx * dx + dy * dy);
+end
+Entity.distance = Utils.distance;
+
+--Signed angle between two normalized vectors
+function Math2D.signedAngle(x1, y1, x2, y2)
+  
+  local dot = x1 * x2 + y1 * y2;
+  
+  if (dot > 0.99) then  
+    return 0.0;
+  end
+  
+  local cross = y2 * x1 - x2 * y1;
+  
+  local angle = math.acos(dot);
+
+  if (cross < 0.0) then
+   angle = -1.0 * angle;
+  end
+  
+  if (angle ~= angle) then
+    print("Angle is nan", x1, y1, x2, y2, dot, cross);
+  end
+  
+  return angle;
+
+end
+
+function Entity.getCenter(entity)
+  return entity.x + entity.w * 0.5, entity.y + entity.h * 0.5;
 end
 
 function PlayerHistory.new()
@@ -366,6 +424,12 @@ function Moat:initServer()
     
     gameState.entities = share.entities;
     
+    local lastUuid = -1;
+    
+    function self:serverGetLastUuid()
+      return lastUuid;
+    end
+    
     function self:spawn(type, x, y, w, h, data)
       
       local uuid;
@@ -376,6 +440,8 @@ function Moat:initServer()
         self.uuidTracker = self.uuidTracker + 1;
         uuid = self.uuidTracker;
       end
+      
+      lastUuid = uuid;
       
       share.entities[uuid] = {
         type = type,
@@ -535,6 +601,10 @@ function Moat:initCommon()
   
   function self:numEntitiesOfType(type)
     return gameState.entityCounts[type];
+  end
+  
+  function self:getEntity(uuid)
+    return gameState.entities[uuid];
   end
   
   function self:destroy(entity)   
@@ -775,5 +845,8 @@ end
 
 Moat.Utils = Utils;
 Moat.PlayerHistory = PlayerHistory;
+Moat.Math2D = Math2D;
+Moat.Entity = Entity;
+Moat.Math = Math;
 
 return Moat;

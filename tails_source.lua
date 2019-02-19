@@ -1,19 +1,24 @@
---castle://localhost:4000/munch_source.lua
+--castle://localhost:4000/tails_source.lua
 
 local Moat = require("moat");
+local List = require("lib/list");
 
 local GameEntities = {
   --Must assign a player type
   Player = 0,
-  Food = 1
+  Food = 1,
+  Tail = 2
 }
 
+local TimeStep = 1.0 / 60.0;
 local GameConstants = {
   WorldSize = 100,
+  TickInterval = TimeStep,
+  PlayerSpeed = TimeStep * 10.0,
   MaxFood = 100,
   ClientVisibility = 40,
-  FoodGain = 0.02,
-  SizeLoss = 0.0001
+  TailMaxAngle = 0.8, -- radians
+  TurningMaxAngle = 0.1
 }
 
 local MyGame = Moat:new(
@@ -58,12 +63,6 @@ function MyGame:clientUpdate(gameState)
     return
   end
   
-  --Set inputs
-  input.w = love.keyboard.isDown("w");
-  input.a = love.keyboard.isDown("a");
-  input.s = love.keyboard.isDown("s");
-  input.d = love.keyboard.isDown("d");
-  
   --Scale the to-mouse vector a few tiles worth so we can modify speed based on distance
   local mouseScale = tileSizePx * 5.0;
   
@@ -74,18 +73,33 @@ function MyGame:clientUpdate(gameState)
   
 end
 
-function getSpeedForSize(player) 
-  return 0.3 / player.w;
-end
+local normalize = Moat.Math2D.normalize;
 
-function resizePlayer(player, newSize)
-  local diff = newSize - player.w;
-  player.w = newSize;
-  player.h = newSize;
-  player.x = player.x - diff * 0.5;
-  player.y = player.y - diff * 0.5;
-end
+function followLeader(follower, leader)
 
+  --Get center points
+  local fx, fy = MyGame.Entity.getCenter(follower);
+  local lx, ly = MyGame.Entity.getCenter(leader);
+  local halfSize = 0.5;
+    
+  --Direction to leader
+  local dx, dy = normalize(lx - fx, ly - fy);
+
+  local leaderAngle = math.atan2(leader.dirY, leader.dirX);
+  
+  --Compute and clamp the offset angle
+  local angle = Moat.Math2D.signedAngle(leader.dirX, leader.dirY, dx, dy);    
+  angle = Moat.Math.clamp(angle, -GameConstants.TailMaxAngle, GameConstants.TailMaxAngle);
+  
+  --Create a new difference vector
+  local ndx, ndy = math.cos(leaderAngle + angle), math.sin(leaderAngle + angle);
+
+  --Set position and direction values
+  local tx, ty = lx - ndx, ly - ndy;
+  follower.dirX, follower.dirY = ndx, ndy;
+  MyGame:moveEntity(follower, tx - halfSize, ty - halfSize);
+
+end
 
 --Shared function for how a player updates, input may be nil
 function MyGame:playerUpdate(player, input)
@@ -95,28 +109,26 @@ function MyGame:playerUpdate(player, input)
     --Try mouse (mx, my) values
     local x, y = input.mx or 0, input.my or 0;
     
-    --Move player based on keyboard input
-    if (input.w) then y = -1 end
-    if (input.a) then x = -1 end
-    if (input.s) then y = 1 end
-    if (input.d) then x = 1 end
+    --Set maximum length of movement vector to 1
+    local mag = Moat.Math2D.length(x, y);
     
-    --Normalize movement vector but preserve lengths < 1
-    local mag = math.sqrt(x * x + y * y);
-    if (mag > 1.0) then
-      x, y = x/mag, y/mag;
+    if (mag > 0.0) then
+      local nmx, nmy = MyGame.Math2D.normalize(x, y)
+      local angle = MyGame.Math2D.signedAngle(player.dirX, player.dirY, nmx, nmy);
+      angle = Moat.Math.clamp(angle, -GameConstants.TurningMaxAngle, GameConstants.TurningMaxAngle);
+      local ogAngle = math.atan2(player.dirY, player.dirX);
+      player.dirX, player.dirY = math.cos(ogAngle + angle), math.sin(ogAngle + angle);       
+      local speed = GameConstants.PlayerSpeed * math.min(1.0, mag);
+      player.x = player.x + speed * player.dirX;
+      player.y = player.y + speed * player.dirY;  
+     end
+    
+    if (x ~= 0 and y ~= 0) then
+      --player.dirX, player.dirY = MyGame.Math2D.normalize(x, y);
     end
     
-    local speed = getSpeedForSize(player);
-    player.x = player.x + speed * x;
-    player.y = player.y + speed * y;
   end
 
-  
-  --Each player loses a small amount of size over time
-  local sizeLoss = GameConstants.SizeLoss;
-  resizePlayer(player, math.max(1.0, player.w - sizeLoss))
-  
   
    --Clamp player to game boundaries
   if (player.x < 0) then player.x = 0 end
@@ -124,33 +136,86 @@ function MyGame:playerUpdate(player, input)
   if (player.x + player.w > GameConstants.WorldSize) then player.x = GameConstants.WorldSize - player.w end
   if (player.y + player.h > GameConstants.WorldSize) then player.y = GameConstants.WorldSize - player.h end
   
+  MyGame:moveEntity(player);
+  
+  for i = player.tail.first, player.tail.last do
+  
+    local uuid = player.tail[i];
+    local tail = MyGame:getEntity(uuid);
+    
+    if (not tail) then return end;
+    
+    if (i == player.tail.first) then
+      followLeader(tail, player)
+    else
+      local prevUuid = player.tail[i-1];
+      local prevTail = MyGame:getEntity(prevUuid);
+      if (not prevTail) then return end;
+      followLeader(tail, prevTail);
+    end
+    
+  end
   
   --Handle interactions with other entities, (players and food)
   MyGame:eachOverlapping(player, function(entity)
     
     if (entity.type == GameEntities.Food) then
+      --Remove the food
       MyGame:despawn(entity);
-      resizePlayer(player, player.w + GameConstants.FoodGain);
+      
+      --Handle tail creation on server only
+      if (self.isServer) then
+
+        local tx, ty = player.x - player.dirX, player.y - player.dirY;
+        
+        if (List.length(player.tail) > 0) then
+          local lastTailUuid = player.tail[player.tail.last];
+          local tailEntity = MyGame:getEntity(lastTailUuid);
+          if (not tailEntity) then return end;
+          tx, ty = tailEntity.x - tailEntity.dirX, tailEntity.y - tailEntity.dirY;
+        end
+      
+        MyGame:spawn(GameEntities.Tail, tx, ty, 1.0, 1.0, {
+        });
+        
+        List.pushright(player.tail, MyGame:serverGetLastUuid());
+      end
+      
     end
     
-    if (entity.type == GameEntities.Player) then
-      if (player.w > entity.w) then
-          resizePlayer(player, player.w + entity.w / 5.0);
-          self:respawnPlayer(entity);
-      end
+    if (entity.type == GameEntities.Player or entity.type == GameEntities.Tail) then
+        if (player.tail[1] ~= entity.uuid) then
+           self:respawnPlayer(player);   
+        end
+        
     end
   end);
   
-  MyGame:moveEntity(player);
   
 end
 
+
 function drawRect(e)
+  
+  if (e.despawned) then
+    love.graphics.setColor(0.2, 0.2, 0.2, 1.0);
+  end
   love.graphics.rectangle("fill", 
     (e.x - cameraCenter.x) * tileSizePx + offsetPx.x, 
     (e.y - cameraCenter.y) * tileSizePx + offsetPx.y, 
     e.w * tileSizePx, 
     e.h * tileSizePx
+  );
+  
+end
+
+
+function drawCircle(e)
+  
+  love.graphics.circle("fill", 
+    (e.x + e.w * 0.5 - cameraCenter.x) * tileSizePx + offsetPx.x, 
+    (e.y + e.h * 0.5 - cameraCenter.y) * tileSizePx + offsetPx.y, 
+    e.w * tileSizePx * 0.5 
   );
   
 end
@@ -162,7 +227,7 @@ end
 
 function drawPlayer(player)
   love.graphics.setColor(1.0, 1.0, 1.0, 1.0);
-  drawRect(player);
+  drawCircle(player);
 end
 
 local gridBar = {};
@@ -207,11 +272,12 @@ function MyGame:clientDraw()
   local player = self:getPlayerState();
   cameraCenter.x = player.x + player.w * 0.5;
   cameraCenter.y = player.y + player.h * 0.5;
-  tileSizePx = tileSizePx * 0.95 + (30.0 / player.w) * 0.05;
+  tileSizePx = 20.0;
   
   drawGrid();
   self:eachEntityOfType(GameEntities.Food, drawFood);
   self:eachEntityOfType(GameEntities.Player, drawPlayer);
+  self:eachEntityOfType(GameEntities.Tail, drawPlayer);
 end
 
 
@@ -250,6 +316,10 @@ end
 function MyGame:serverResetPlayer(player)
   player.x , player.y = math.random(GameConstants.WorldSize), math.random(GameConstants.WorldSize) 
   player.w , player.h = 1, 1;
+  
+  player.dirX = 0.0;
+  player.dirY = -1.0;
+  player.tail = List.new(1); -- Create an empty tails array that is 1 indexed
 end
 
 function MyGame:clientLoad()
