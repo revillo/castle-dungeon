@@ -144,6 +144,9 @@ function PlayerHistory.updateInput(ph, input)
   
 end
 
+TICK_BUFFER = 2
+TICK_DEBUG = -1;
+
 function PlayerHistory.rebuild(ph, state, serverTick, moat)
 
 
@@ -151,7 +154,9 @@ function PlayerHistory.rebuild(ph, state, serverTick, moat)
   
   -- Find the ideal tick offset between client and server, and decide whether or not to use it
   
-  local idealTick = serverTick + math.ceil((moat:getPing()*0.001) / moat.Constants.TickInterval) + 2;
+  local idealTick = serverTick + math.ceil((moat:getPing()*0.001) / moat.Constants.TickInterval) + TICK_BUFFER;
+  
+  TICK_DEBUG = idealTick - serverTick;
   
   local idealDiff = idealTick - ph.tick;
   
@@ -812,8 +817,20 @@ function Moat:runClient()
     self:clientKeyPressed(key);
     
     if (key == "`") then
-      print(self.smoothedPing, self.lastPing);
+      print(self.smoothedPing, self.lastPing, TICK_DEBUG);
     end
+    
+    if (key == "t") then
+      TICK_BUFFER = TICK_BUFFER + 1;
+      print("tb", TICK_BUFFER, TICK_DEBUG);
+   end
+    
+    if (key == "g") then
+      TICK_BUFFER = TICK_BUFFER - 1;
+      print("tb", TICK_BUFFER, TICK_DEBUG);
+    end
+    
+    
   end
   
   function client.keyreleased(key)
