@@ -250,19 +250,20 @@ function Moat:initClient()
     entity.despawned = gameState.tick;
   end
   
-  local smoothedPing = -1;
+  self.smoothedPing = -1;
+  self.lastPing = -1;
   
   function self:smoothPing()
-    if (smoothedPing < 0) then
-      smoothedPing = cs.client.getPing();
+    if (self.smoothedPing < 0) then
+      self.smoothedPing = cs.client.getPing();
     else
-      smoothedPing = Utils.lerp(smoothedPing, cs.client.getPing(), 0.2);
+      self.lastPing = cs.client.getPing();
+      self.smoothedPing = Utils.lerp(self.smoothedPing, self.lastPing, 0.2);
     end
-    --print(smoothedPing);
   end
   
   function self:getPing()
-      return smoothedPing;
+      return self.smoothedPing;
   end
   
   function self:clientUpdate()
@@ -506,6 +507,13 @@ function Moat:initServer()
           if (player and home.playerHistory) then
           
             local clientInput = PlayerHistory.getInput(home.playerHistory, tick-1);
+            
+            if (~clientInput) then
+              self.server.send(id, {
+                debug_msg = "NIL_INPUT",
+                tick = tick;
+              });
+            end
             
             self:playerUpdate(player, clientInput);
             
@@ -789,6 +797,10 @@ function Moat:runClient()
   end
   
   function client.receive(msg)
+    
+    if (msg.debug_msg) then
+      print(msg.debug_msg, msg.tick);
+    end
     self:clientReceive(msg);
   end
   
@@ -798,6 +810,10 @@ function Moat:runClient()
   
   function client.keypressed(key)
     self:clientKeyPressed(key);
+    
+    if (key == "`") then
+      print(self.smoothedPing, self.lastPing);
+    end
   end
   
   function client.keyreleased(key)
