@@ -33,6 +33,7 @@ function MyGame:clientMouseMoved(x, y)
   mousePos.y = y;
 end
 
+--These quick and dirty functions just allow a player to click before spawning into the world when "showMenu" is true
 function MyGame:clientMousePressed(x, y)
   if (self:clientIsConnected() and showMenu) then
     
@@ -67,6 +68,7 @@ function MyGame:clientUpdate(gameState)
   --Scale the to-mouse vector a few tiles worth so we can modify speed based on distance
   local mouseScale = tileSizePx * 5.0;
   
+  --offsetPx is the center point
   input.mx = ((mousePos.x - offsetPx.x) / mouseScale);
   input.my = ((mousePos.y - offsetPx.y) / mouseScale);
   
@@ -78,6 +80,7 @@ function getSpeedForSize(player)
   return 0.3 / player.w;
 end
 
+-- Helper function to set the width and height values simultaneously
 function resizePlayer(player, newSize)
   local diff = newSize - player.w;
   player.w = newSize;
@@ -85,7 +88,6 @@ function resizePlayer(player, newSize)
   player.x = player.x - diff * 0.5;
   player.y = player.y - diff * 0.5;
 end
-
 
 --Shared function for how a player updates, input may be nil
 function MyGame:playerUpdate(player, input)
