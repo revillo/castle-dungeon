@@ -144,7 +144,7 @@ function PlayerHistory.updateInput(ph, input)
   
 end
 
-TICK_BUFFER = 2
+TICK_BUFFER = 4;
 TICK_DEBUG = -1;
 
 function PlayerHistory.rebuild(ph, state, serverTick, moat)
@@ -820,17 +820,21 @@ function Moat:runClient()
       print(self.smoothedPing, self.lastPing, TICK_DEBUG);
     end
     
-    if (key == "t") then
+    if (key == "{") then
       TICK_BUFFER = TICK_BUFFER + 1;
       print("tb", TICK_BUFFER, TICK_DEBUG);
    end
     
-    if (key == "g") then
+    if (key == "}") then
       TICK_BUFFER = TICK_BUFFER - 1;
       print("tb", TICK_BUFFER, TICK_DEBUG);
     end
     
     
+  end
+  
+  function client.backgroundupdate(dt)
+    self:update(dt)
   end
   
   function client.keyreleased(key)
