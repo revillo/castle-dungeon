@@ -366,7 +366,7 @@ function Moat:initClient()
   end
   
   function self:respawnPlayer(entity)
-    --self:despawn(entity);
+    self:despawn(entity);
   end
     
   function self:clientDraw()
