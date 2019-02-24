@@ -13,7 +13,7 @@ local C = ffi.C
 
 
 local MAX_MAX_CLIENTS = 64
-
+local NUM_CHANNELS = 2
 
 local server = {}
 do
@@ -48,7 +48,7 @@ do
     end
 
     function server.start(port)
-        host = enet.host_create('*:' .. tostring(port or '22122'), MAX_MAX_CLIENTS)
+        host = enet.host_create('*:' .. tostring(port or '22122'), MAX_MAX_CLIENTS, NUM_CHANNELS)
         if host == nil then
             error("couldn't start server -- is port in use?")
         end
@@ -56,6 +56,15 @@ do
             host:compress_with_range_coder()
         end
         server.started = true
+    end
+    
+    function server.sendUnreliable(id, ...)
+        local data = marshal.encode({ message = { nArgs = select('#', ...), ... } })
+        if id == 'all' then
+            host:broadcast(data, 1, "unreliable")
+        else
+            assert(idToPeer[id], 'no connected client with this `id`'):send(data, 1, "unreliable")
+        end
     end
 
     function server.send(id, ...)
@@ -226,9 +235,15 @@ do
         end
         print("Given address", address)
         
-        host:connect(address or '127.0.0.1:22122')
+        host:connect(address or '127.0.0.1:22122', NUM_CHANNELS)
     end
 
+    function client.sendUnreliable(...)
+        assert(peer, 'client is not connected'):send(marshal.encode({
+            message = { nArgs = select('#', ...), ... },
+        }), 1, "unreliable");
+    end
+    
     function client.send(...)
         assert(peer, 'client is not connected'):send(marshal.encode({
             message = { nArgs = select('#', ...), ... },
