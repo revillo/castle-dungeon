@@ -20,6 +20,16 @@ function Math.clamp(a, lo, hi)
 
 end
 
+function Utils.overwrite(toTable, fromTable)
+  
+  for k,v in pairs(toTable) do
+    toTable[k] = nil;
+  end
+  
+  Utils.copyInto(toTable, fromTable);
+  return toTable;
+end
+
 function Utils.copyInto(toTable, fromTable)
   
   if (fromTable) then
@@ -210,6 +220,13 @@ function PlayerHistory.advance(ph, moat, inputHistory)
   
 end
 
+Moat.Commands = {
+  
+  CLIENT_SEND_VOLATILE = 0,
+  CLIENT_RECEIVE_VOLATILE = 1
+
+}
+
 function Moat:initClient()
   print("init client");
   self.client = cs.client;
@@ -311,7 +328,7 @@ function Moat:initClient()
 
      
     self.client.sendUnreliable({
-      cmd = 0,
+      cmd = Moat.Commands.CLIENT_SEND_VOLATILE,
       state = ph.state,
       tick = ph.tick
     });
@@ -354,6 +371,11 @@ function Moat:initClient()
         self:clientSyncPlayer(serverEntity);
     else
     --Sync any other game entity
+    
+    local volatileMap = self.volatileState[serverEntity.uuid] or {lastTick = -100};
+    if (volatileMap.lastTick > share.tick) then
+      return;
+    end
     
     if (not gameState.entitiesByType[serverEntity.type]) then
       return;
@@ -436,16 +458,19 @@ function Moat:initServer()
     self.entityForClient = {};
     
     self.relevanceMap = {};
-    self.volatileState = {};
+    self.changedSinceCheckpoint = {};
    
     local share = self.share;
     local gameState = self.gameState;
     local homes = self.homes;
-    local constants = self.Constants;
+    local Constants = self.Constants;
+    local EntityTypes = self.EntityTypes;
     
-    -- Initialize entities table on share so it's synced
+    -- Shared entity map
     share.entities = {};
     
+    --gameState.entities = share.entities;
+
     function self.serverEntityRelevance(ents, clientId)
       result = {};
 
@@ -460,7 +485,7 @@ function Moat:initServer()
       end
       
       -- Use our spatial hash to call makeRelevant on visible entities
-      local viz = constants.ClientVisibility;
+      local viz = Constants.ClientVisibility;
       
       gameState.space:each(playerState.x - viz, playerState.y - viz,
                  viz * 2, viz * 2, makeRelevant);
@@ -470,7 +495,6 @@ function Moat:initServer()
     end
     
     
-    gameState.entities = share.entities;
     
     local lastUuid = -1;
     
@@ -503,21 +527,26 @@ function Moat:initServer()
         uuid = uuid
       };
       
-      local entity = share.entities[uuid];
-
-      
+      local entity = share.entities[uuid];      
       Utils.copyInto(entity, data);
       
-      gameState.space:add(entity, entity.x, entity.y, entity.w, entity.h);
-      gameState.entitiesByType[entity.type][entity.uuid] = entity;
-      gameState.entityCounts[entity.type] = gameState.entityCounts[entity.type] + 1;
+      
+      gameState.entities[entity.uuid] = Utils.copyInto({}, entity);
+      local gsEntity = gameState.entities[uuid];
+      
+      gameState.space:add(gsEntity, gsEntity.x, gsEntity.y, gsEntity.w, gsEntity.h);
+      gameState.entitiesByType[gsEntity.type][uuid] = gsEntity;
+      gameState.entityCounts[gsEntity.type] = gameState.entityCounts[gsEntity.type] + 1;
       
       if (type == self.EntityTypes.Player and data and data.clientId) then
-        self.entityForClient[data.clientId] = entity;
+        self.entityForClient[data.clientId] = gsEntity;
+        self.volatileState[uuid] = {};
         --print("spawn", entity.clientId, entity.uuid);
       end
       
-      return entity;
+      --share.tick = self:getTick();
+      
+      return gsEntity;
     end
     
     function self:despawn(entity)
@@ -530,6 +559,8 @@ function Moat:initServer()
       end
       
       self:destroy(entity);
+      share.entities[entity.uuid] = nil;
+      --share.tick = self:getTick();
     end
 
     function self:respawnPlayer(player)
@@ -545,6 +576,7 @@ function Moat:initServer()
       
     end
     
+    --[[
     function self:serverUpdatePlayers()
       
       local tick = gameState.tick;
@@ -571,6 +603,7 @@ function Moat:initServer()
           end -- if player history
       end -- each player
     end -- updateAllPlayers
+    ]]
     
     function self:serverUpdate()
       
@@ -578,51 +611,101 @@ function Moat:initServer()
     
     local lastCheckpoint = -1;
     
-    function self:advanceGameState() 
-      --self:serverUpdatePlayers();
+    -- Periodically transfer gameState entities over to share and broadcast checkpoint
+    function self:serverMakeCheckpoint()
+      lastCheckpoint = gameState.tick;
+      share.tick = gameState.tick;
       
-      if (lastCheckpoint < 0 or gameState.tick % 60 == 0) then
-          lastCheckpoint = gameState.tick;
-          share.tick = gameState.tick;
-          for id, home in pairs(homes) do
-            --Server player state
-            local player = self.entityForClient[id];
-          
-            if player then
-              local vs = self.volatileState[player.uuid];
-              
-              if vs then
-                Utils.copyInto(player, vs.state);
-                self.volatileState[player.uuid] = nil;
-              end
-            end
-          end
-      end
-      
-      
+      --[[
       for id, home in pairs(homes) do
-        for uuid, entity in pairs(share.entities) do
-          if (entity.clientId and entity.clientId == id) then
+        --Server player state
+        local player = self.entityForClient[id];
+      
+        if player then
+          local vs = self.volatileState[player.uuid];
           
-          else
-          
-            self.relevanceMap[id] = self.relevanceMap[id] or 1;
-            local vs = self.volatileState[uuid];
-            if (vs and vs.tick > self.relevanceMap[id]) then
-              self.relevanceMap[id] = vs.tick;
-            
-              self.server.sendUnreliable(id, {
-                cmd = 1,
-                uuid = uuid,
-                state = vs.state
-              });
-            end
+          if vs then
+            Utils.copyInto(player, vs.state);
+            self.volatileState[player.uuid] = nil;
           end
         end
       end
+      ]]
       
+      for uuid, gsEntity in pairs(self.changedSinceCheckpoint) do
+        local sharedEntity = share.entities[uuid];
+        if (sharedEntity) then
+          Utils.overwrite(sharedEntity, gsEntity);
+         end
+      end
+      
+      self.changedSinceCheckpoint = {};
+    end
+    
+    -- Load volatile player states into gameState
+    function self:serverLoadVolatiles()
+    
+       local tick = gameState.tick;
+       local volatileState = self.volatileState;
+       
+       for id, home in pairs(homes) do
+          --Server player state
+          local player = self.entityForClient[id];
+        
+          if player then
+            local vs = volatileState[player.uuid][tick];
+            
+            if vs then
+              Utils.copyInto(player, vs);
+              volatileState[player.uuid][tick] = nil;
+              self.changedSinceCheckpoint[player.uuid] = player;
+            end
+          end
+        end
+    end
+    
+    function self:serverUpdateClients()    
+    
+      for id, home in pairs(homes) do
+      --Todo use relevance instead
+        for uuid, entity in pairs(self.changedSinceCheckpoint) do
+          if (entity.clientId and entity.clientId == id) then
+            --Don't relevant self?
+          else
+          
+            local sendTick = gameState.tick;
+            
+            if (entity.type == EntityTypes.Player) then
+              local volatileMap = self.volatileState[entity.uuid];
+              if (volatileMap.lastTick and volatileMap.lastTick > gameState.tick) then
+                entity = volatileMap[volatileMap.lastTick];
+                sendTick = volatileMap.lastTick;
+              end
+            end
+            
+            self.server.sendUnreliable(id, {
+              cmd = Moat.Commands.CLIENT_RECEIVE_VOLATILE,
+              uuid = uuid,
+              tick = sendTick,
+              state = entity
+            });
+          end
+        end
+      end
+    end
+    
+    function self:advanceGameState() 
+      --self:serverUpdatePlayers();
+      local tick = gameState.tick;
+      
+      if (lastCheckpoint < 0 or tick % 60 == 0) then
+          self:serverMakeCheckpoint();
+      end
+      
+      self:serverLoadVolatiles();     
       self:worldUpdate(self.gameState.tick);
       self:serverUpdate(self.gameState.tick);
+      self:serverUpdateClients();
     end
     
     function self:serverSend(clientId, msg)
@@ -674,8 +757,8 @@ function Moat:initGameState()
     gameState.entityCounts[value] = 0;
   end
  
-  
   self.gameState = gameState;
+  self.volatileState = {};
 
 end
 
@@ -784,7 +867,16 @@ function Moat:initCommon()
     end
   
   end
-
+  
+  function self:receiveVolatile(msg)
+    local entity = gameState.entities[msg.state.uuid];
+      if (entity) then
+        local volatileMap = self.volatileState[entity.uuid] or {};
+        volatileMap[msg.tick] = msg.state;
+        volatileMap.lastTick = math.max(volatileMap.lastTick or -1, msg.tick);
+        self.volatileState[entity.uuid] = volatileMap;
+      end
+    end    
 end
 
 function Moat:new(entityTypes, constants) 
@@ -852,20 +944,9 @@ function Moat:runServer()
     
     function server.receive(clientId, msg)
       
-      if (msg.cmd == 0) then
-        local entity = self.entityForClient[clientId];
-        if (entity) then
-          self.volatileState[entity.uuid] = self.volatileState[entity.uuid] or {tick = -1};
-          local vs = self.volatileState[entity.uuid];
-        
-          if (msg.tick > vs.tick) then
-            --print("Receive state", clientId, msg.tick);
-            vs.tick = msg.tick;
-            vs.state = msg.state;          
-          end
-        end
-          
-          
+      if (msg.cmd == Moat.Commands.CLIENT_SEND_VOLATILE) then
+        --TODO VALIDATE
+        self:receiveVolatile(msg);
         return;
       end
       
@@ -914,11 +995,18 @@ function Moat:runClient()
   
   function client.receive(msg)
     
-    if (msg.cmd == 1) then
+    if (msg.cmd == Moat.Commands.CLIENT_RECEIVE_VOLATILE) then
+      
+      self:receiveVolatile(msg);
+    
       local entity = self.gameState.entities[msg.uuid]
       if (entity) then
+        
+        local tick = msg.tick;
+        
         Utils.copyInto(entity, msg.state);
         self:moveEntity(entity);
+        
       end
     end
     
