@@ -9,8 +9,8 @@ local GameEntities = {
 }
 
 local GameConstants = {
-  WorldSize = 100,
-  MaxFood = 100,
+  WorldSize = 30,
+  MaxFood = 10,
   ClientVisibility = 40,
   FoodGain = 0.02,
   SizeLoss = 0.0001
@@ -133,6 +133,7 @@ function MyGame:playerUpdate(player, input)
     if (entity.type == GameEntities.Food) then
       MyGame:despawn(entity);
       resizePlayer(player, player.w + GameConstants.FoodGain);
+      print("Ate", player.w);
     end
     
     if (entity.type == GameEntities.Player) then

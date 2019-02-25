@@ -171,12 +171,17 @@ function PlayerHistory.rebuild(ph, state, serverTick, moat)
   TICK_DEBUG = idealTick - serverTick;
   
   local idealDiff = idealTick - ph.tick;
+  local didSnap = false;
   
-  if (idealDiff > -4 and idealDiff < 4) then
+  if (idealDiff > -10 and idealDiff < 4) then
     idealTick = ph.tick;
   else
-    print("snap", ph.tick, idealTick, serverTick);
+    didSnap = true;
+   print("snap", ph.tick, idealTick, serverTick, idealDiff);
+    idealTick = idealTick;
   end
+  
+  --print("Time:", love.timer.getTime());
   
   local oldTick = ph.tick;
   
@@ -199,6 +204,9 @@ function PlayerHistory.rebuild(ph, state, serverTick, moat)
       PlayerHistory.advance(ph, moat, ph.inputHistory);
   end
 
+  if (didSnap) then
+    --print("Snapped to", ph.tick);
+  end
 end
 
 function PlayerHistory.advance(ph, moat, inputHistory)
@@ -206,7 +214,7 @@ function PlayerHistory.advance(ph, moat, inputHistory)
   moat.gameState.tick = ph.tick;
 
   moat:playerUpdate(ph.state, inputHistory[ph.tick]);
-  moat:worldUpdate(ph.tick);
+  --moat:worldUpdate(ph.tick);
 
   ph.tick = ph.tick + 1;
   inputHistory.last = ph.tick;
@@ -299,10 +307,10 @@ function Moat:initClient()
   --Client Tick
   function self:advanceGameState()
     
-    self:clientSyncEntities();
+    --self:clientSyncEntities();
     
     if (self.doRebuild) then 
-
+      
       local backup = Utils.copyInto({}, ph.state);
       
       local serverState = self.doRebuild.serverState;
@@ -311,14 +319,15 @@ function Moat:initClient()
       self.doRebuild = nil;
       --print("doin rebuild", serverState.x, serverState.y);
       
-      if (not backup.uuid or backup.uuid ~= serverState.uuid or Entity.distance(backup, serverState) > 1) then
+      if (not backup.uuid or backup.uuid ~= serverState.uuid or Entity.distance(backup, serverState) > 3) then
         --print("Used rebuild");
       else
        -- print("overwrote");
        Utils.copyInto(ph.state, backup);
       end
     
-      
+     --end
+     
     else
      if (ph.state.clientId == nil) then return end
      PlayerHistory.advance(ph, self, ph.inputHistory)
@@ -333,7 +342,7 @@ function Moat:initClient()
       tick = ph.tick
     });
     
-    --gameState.tick = ph.tick;
+    gameState.tick = ph.tick;
     --print("tick", ph.tick);
 
     
@@ -344,15 +353,17 @@ function Moat:initClient()
     PlayerHistory.updateInput(ph, input);    
   end
   
+  local lastRebuildTick = -1;
   function self:clientSyncPlayer(serverPlayer)
     
        --print("CSP", serverPlayer.x, serverPlayer.y);
-      --if (not self.doRebuild) then
+      if (share.tick > lastRebuildTick) then
         self.doRebuild = {
           serverState = serverPlayer,
           tick = share.tick
         };
-      --end
+        lastRebuildTick = share.tick;
+      end
       
       self.gameState.entitiesByType[self.EntityTypes.Player][serverPlayer.uuid] = ph.state;
       self.gameState.entities[serverPlayer.uuid] = ph.state;
@@ -372,14 +383,14 @@ function Moat:initClient()
     else
     --Sync any other game entity
     
-    local volatileMap = self.volatileState[serverEntity.uuid] or {lastTick = -100};
-    if (volatileMap.lastTick > share.tick) then
-      return;
-    end
-    
-    if (not gameState.entitiesByType[serverEntity.type]) then
-      return;
-    end
+      local volatileMap = self.volatileState[serverEntity.uuid] or {lastTick = -100};
+      if (volatileMap.lastTick > share.tick) then
+        return;
+      end
+      
+      if (not gameState.entitiesByType[serverEntity.type]) then
+        return;
+      end
     
       gameState.entities[serverEntity.uuid] = gameState.entities[serverEntity.uuid] or {};
       local localEntity = gameState.entities[serverEntity.uuid];
@@ -405,7 +416,7 @@ function Moat:initClient()
   local share = cs.client.share;
   function self:clientSyncEntities()
   
-    if (share.tick ~= lastSyncTick) then
+    --if (share.tick ~= lastSyncTick) then
       lastSyncTick = share.tick;
       --print("cse", share.tick);
 
@@ -422,12 +433,14 @@ function Moat:initClient()
           self:clientUnsyncEntityId(uuid);
         end
       end
-    end
+    --end
 
   end
   
   function self:respawnPlayer(entity)
-    self:despawn(entity);
+    if (entity.clientId ~= cs.client.id) then
+      self:despawn(entity);
+    end
   end
     
   function self:clientDraw()
@@ -458,8 +471,7 @@ function Moat:initServer()
     self.entityForClient = {};
     
     self.relevanceMap = {};
-    self.changedSinceCheckpoint = {};
-   
+ 
     local share = self.share;
     local gameState = self.gameState;
     local homes = self.homes;
@@ -517,7 +529,7 @@ function Moat:initServer()
       lastUuid = uuid;
       print("spawn", uuid, type, x, y);
       
-      share.entities[uuid] = {
+      local entity = {
         type = type,
         x = x,
         y = y,
@@ -527,7 +539,7 @@ function Moat:initServer()
         uuid = uuid
       };
       
-      local entity = share.entities[uuid];      
+    -- local entity = share.entities[uuid];      
       Utils.copyInto(entity, data);
       
       
@@ -545,7 +557,7 @@ function Moat:initServer()
       end
       
       --share.tick = self:getTick();
-      
+      share.entities[uuid] = Utils.copyInto({}, entity);
       return gsEntity;
     end
     
@@ -574,6 +586,20 @@ function Moat:initServer()
     
     function self:serverInitWorld()
       
+    end
+    
+    function self:serverUpdatePlayers()
+      local tick = gameState.tick;
+      local space = gameState.space;
+
+      for id, home in pairs(homes) do
+            --Server player state
+        local player = self.entityForClient[id];
+        
+        if (player) then
+          self:playerUpdate(player, nil);
+        end
+      end
     end
     
     --[[
@@ -659,16 +685,18 @@ function Moat:initServer()
               Utils.copyInto(player, vs);
               volatileState[player.uuid][tick] = nil;
               self.changedSinceCheckpoint[player.uuid] = player;
+              self:moveEntity(player);
             end
           end
         end
     end
     
-    function self:serverUpdateClients()    
+    function self:serverSyncClients()    
     
       for id, home in pairs(homes) do
       --Todo use relevance instead
         for uuid, entity in pairs(self.changedSinceCheckpoint) do
+        
           if (entity.clientId and entity.clientId == id) then
             --Don't relevant self?
           else
@@ -697,15 +725,18 @@ function Moat:initServer()
     function self:advanceGameState() 
       --self:serverUpdatePlayers();
       local tick = gameState.tick;
+   
       
+      self:serverLoadVolatiles();     
+      self:serverUpdatePlayers();
+      self:worldUpdate(self.gameState.tick);
+      self:serverUpdate(self.gameState.tick);
+         
       if (lastCheckpoint < 0 or tick % 60 == 0) then
           self:serverMakeCheckpoint();
       end
       
-      self:serverLoadVolatiles();     
-      self:worldUpdate(self.gameState.tick);
-      self:serverUpdate(self.gameState.tick);
-      self:serverUpdateClients();
+      self:serverSyncClients();
     end
     
     function self:serverSend(clientId, msg)
@@ -759,7 +790,8 @@ function Moat:initGameState()
  
   self.gameState = gameState;
   self.volatileState = {};
-
+  self.changedSinceCheckpoint = {};
+   
 end
 
 function Moat:initCommon()
@@ -802,6 +834,8 @@ function Moat:initCommon()
       gameState.entitiesByType[entity.type][entity.uuid] = nil;
       gameState.entities[entity.uuid] = nil;
       gameState.entityCounts[entity.type] = gameState.entityCounts[entity.type] - 1;
+      self.volatileState[entity.uuid] = nil;
+      self.changedSinceCheckpoint[entity.uuid] = nil;
   end
   
   function self:eachEntityOfType(type, fn, ...)
@@ -836,6 +870,7 @@ function Moat:initCommon()
   end
   
   function self:rehashEntity(entity)
+    self.changedSinceCheckpoint[entity.uuid] = entity;
     space:update(entity, entity.x, entity.y, entity.w, entity.h);
   end
   
@@ -996,10 +1031,12 @@ function Moat:runClient()
   function client.receive(msg)
     
     if (msg.cmd == Moat.Commands.CLIENT_RECEIVE_VOLATILE) then
-      
+       
       self:receiveVolatile(msg);
     
-      local entity = self.gameState.entities[msg.uuid]
+      local entity = self.gameState.entities[msg.uuid];
+
+      
       if (entity) then
         
         local tick = msg.tick;
@@ -1056,11 +1093,32 @@ function Moat:runClient()
     self:clientMouseMoved(x, y);
   end
   
-  --[[
+  
   function client.changed(diff)
-    --self:clientSyncEntities(diff);
+    self:clientSyncEntities();
+    
+    --[[
+    if (diff and diff.entities) then
+      for uuid, entity in pairs(diff.entities) do
+        
+        if (entity == cs.DIFF_NIL) then
+          self:clientUnsyncEntityId(uuid);
+        elseif (uuid ~= self:getPlayerState().uuid) then
+          
+          local ent2 = entity; 
+          if (self.share.entities[uuid]) then
+            ent2 = self.share.entities[uuid];
+          end
+          
+          if (ent2 and ent2.clientId == client.id) then
+            
+          end
+        end
+        
+      end
+    end]]
+    
   end
-  ]]
   
   function client.draw()
     self:clientDraw();

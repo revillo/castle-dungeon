@@ -56,6 +56,30 @@ function DGame:clientMousePressed(x, y)
   end  
 end
 
+function love.keypressed(key)
+  
+  if (key == "b") then
+    DGame:eachEntityOfType(GameEntities.Player, function(player)
+      
+      print("GS Player..", player.uuid,player.x, player.y, player.clientId);
+      
+    end);
+    
+    for uuid, ent in pairs(DGame.share.entities) do
+      if (ent.type == GameEntities.Player) then
+        print("SH Player", ent.uuid, ent.x, ent.y, ent.clientId);
+      end
+    end
+    
+    print("ph");
+    for k, v in pairs(DGame:getPlayerState()) do
+      print(k, v);
+    end
+    
+  end
+  
+end
+
 function DGame:serverReceive(clientId, msg)
     
   if (msg.cmd == "request_spawn") then
@@ -335,6 +359,8 @@ function serverAddHazards(room, x, y, roomSize)
   
   local whichHazard = math.random(3);
   
+  --whichHazard = 2;
+  
   if (whichHazard == 1) then
     -- Add Orb Wheel
     local spinDir = (math.random() - 0.5) * 2.0;
@@ -408,7 +434,7 @@ function serverCreateMaze(mazeWidth, mazeHeight)
 end
 
 function DGame:serverInitWorld()
-  serverCreateMaze(10, 10);
+  serverCreateMaze(3, 3);
 end
 
 function DGame:serverResetPlayer(player)
@@ -448,7 +474,7 @@ function updateMonster(monster, tick)
     end
     
     local closestPlayer = findNearestPlayer(monster, monster.searchArea);
-    
+
     local oldX, oldY = monster.x, monster.y;
     
     if (closestPlayer) then
@@ -458,6 +484,8 @@ function updateMonster(monster, tick)
         local x = monster.x + dx * GameConstants.MonsterSpeed;
         local y = monster.y + dy * GameConstants.MonsterSpeed;
         DGame:moveEntity(monster, x, y);
+        
+        --DGame.changedSinceCheckpoint[monster.uuid] = monster;
     end
     
     DGame:eachOverlapping(monster, function(entity) 
