@@ -195,7 +195,7 @@ function PlayerHistory.rebuild(ph, state, serverTick, moat)
   
   local idealDiff = idealTick - ph.tick;
   
-  if (idealDiff > -2 and idealDiff < 4) then
+  if (idealDiff > -3 and idealDiff < 4) then
     idealTick = ph.tick;
   else
     --ph.input = {changeMe = 1};
