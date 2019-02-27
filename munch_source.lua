@@ -35,9 +35,9 @@ end
 
 --These quick and dirty functions just allow a player to click before spawning into the world when "showMenu" is true
 function MyGame:clientMousePressed(x, y)
-  if (self:clientIsConnected() and showMenu) then
+  if (MyGame:clientIsConnected() and showMenu) then
     
-    self:clientSend({
+    MyGame:clientSend({
       cmd = "request_spawn"
     });
     
@@ -47,7 +47,7 @@ end
 
 function MyGame:serverReceive(clientId, msg)
   if (msg.cmd == "request_spawn") then
-    self:spawnPlayer(clientId);
+    MyGame:spawnPlayer(clientId);
   end
   
 end
@@ -55,7 +55,7 @@ end
 --Update client for every game tick
 local input = {};
 function MyGame:clientUpdate(gameState)
-  if (not self:clientIsSpawned()) then
+  if (not MyGame:clientIsSpawned()) then
     return
   end
   

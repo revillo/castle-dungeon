@@ -199,7 +199,7 @@ function PlayerHistory.rebuild(ph, state, serverTick, moat)
     idealTick = ph.tick;
   else
     --ph.input = {changeMe = 1};
-    print("snap");
+    print("snap",idealDiff, serverTick, ph.tick);
   end
   
 

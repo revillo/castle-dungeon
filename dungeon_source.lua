@@ -41,10 +41,10 @@ local showMenu = true;
 local mouseEvent = nil;
 
 function DGame:clientMousePressed(x, y)
-  if (self:clientIsConnected() and showMenu) then
+  if (DGame:clientIsConnected() and showMenu) then
     
     -- Initial handshake to connect
-    self:clientSend({
+    DGame:clientSend({
       cmd = "request_spawn"
     });
     
@@ -59,7 +59,7 @@ end
 function DGame:serverReceive(clientId, msg)
     
   if (msg.cmd == "request_spawn") then
-    self:spawnPlayer(clientId);
+    DGame:spawnPlayer(clientId);
   end
   
 end
@@ -530,6 +530,10 @@ function updateEyeBullet(eyeBullet)
 end
 
 function updateChest(chest, tick)
+  
+  if (DGame.isClient) then  
+    return
+  end
   
   if (tick % 1000 == 0) then
     
