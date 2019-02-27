@@ -275,6 +275,7 @@ function Moat:initClient()
   
   --Client spawns a temp
   function self:spawn(type, x, y, w, h, data)
+    data = data or {};
     data.uuid = "temp"..tempUUID;
     tempUUID = tempUUID + 1;
     
