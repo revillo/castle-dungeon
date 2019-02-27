@@ -244,7 +244,8 @@ function PlayerHistory.advance(ph, moat, input)
   moat.gameState.tick = ph.tick;
 
   moat:playerUpdate(ph.state, input);
-  moat:worldUpdate(ph.tick);
+  moat:worldUpdate(ph.tick);  
+  moat:cacheTemporaries();
 
   ph.tick = ph.tick + 1;
     
@@ -269,7 +270,40 @@ function Moat:initClient()
   
   self.ping = 100;
   
-  function self:spawn()
+  local tempUUID = 0;
+  local tempCache = {};
+  
+  --Client spawns a temp
+  function self:spawn(type, x, y, w, h, data)
+    data.uuid = "temp"..tempUUID;
+    tempUUID = tempUUID + 1;
+    
+    data._spawnTick = gameState.tick;
+    
+     local entity = {
+        type = type,
+        x = x,
+        y = y,
+        w = w,
+        h = h,
+      };     
+      
+      Utils.copyInto(entity, data);
+      
+      gameState.space:add(entity, entity.x, entity.y, entity.w, entity.h);
+      gameState.entitiesByType[entity.type][entity.uuid] = entity;
+      gameState.entityCounts[entity.type] = gameState.entityCounts[entity.type] + 1;
+      gameState.entities[entity.uuid] = entity;
+      
+      tempCache[entity.uuid] = {};
+      tempCache[entity.uuid][gameState.tick] = Utils.copyInto({}, entity);
+  end
+  
+  function self:cacheTemporaries()
+    for uuid, cacheEntity in pairs(tempCache) do
+      local entity = gameState.entities[uuid];
+      tempCache[uuid][gameState.tick] = Utils.copyInto({}, entity);
+    end
   end
   
   function self:spawnPlayer()
@@ -297,7 +331,7 @@ function Moat:initClient()
   end
     
   function self:despawn(entity)
-    entity.despawned = gameState.tick;
+    entity._despawnTick = gameState.tick;
   end
   
   self.smoothedPing = -1;
@@ -376,8 +410,8 @@ function Moat:initClient()
       self:rehashEntity(localEntity);
       gameState.entitiesByType[serverEntity.type][serverEntity.uuid] = localEntity;
       
-      if (localEntity.despawned and (share.tick > localEntity.despawned + 20)) then
-        localEntity.despawned = nil;
+      if (localEntity._despawnTick and (share.tick > localEntity._despawnTick + 20)) then
+        localEntity._despawnTick = nil;
       end
     end
     
@@ -405,9 +439,15 @@ function Moat:initClient()
       end
       
       for uuid, e in pairs(gameState.entities) do
-        if (not serverEntities[uuid]) then
+        --If entity is a temporary (has _spawnTick defined) then either rewind it to a cached state or delete it (It will be spawned again during rewind)
+        if (e._spawnTick and e._spawnTick > share.tick and tempCache[uuid][share.tick]) then
+          Utils.copyInto(gameState.entities[uuid], tempCache[uuid][share.tick]);
+          self:moveEntity(gameState.entities[uuid]);
+        elseif (not serverEntities[uuid]) then
           self:clientUnsyncEntityId(uuid);
+          tempCache[uuid] = nil;
         end
+        
       end
     end
 
@@ -520,7 +560,6 @@ function Moat:initServer()
       
       if (type == self.EntityTypes.Player and data and data.clientId) then
         self.entityForClient[data.clientId] = entity;
-        --print("spawn", entity.clientId, entity.uuid);
       end
       
       return entity;
@@ -656,6 +695,10 @@ function Moat:initCommon()
   local gameState = self.gameState;
   local space = gameState.space;
   
+  function self:getTick()
+    return gameState.tick;
+  end
+  
   function self:playerUpdate(player, input)
     
   end
@@ -695,7 +738,7 @@ function Moat:initCommon()
     end
   
     for uuid, entity in pairs(gameState.entitiesByType[type]) do
-      if (not entity.despawned or gameState.tick <= entity.despawned) then
+      if (not entity._despawnTick or gameState.tick <= entity._despawnTick) then
         fn(entity, ...);
       end
     end
@@ -727,7 +770,7 @@ function Moat:initCommon()
   function self:eachOverlapping(entity, fn)
     
     local ifActive = function(entity)
-      if (not entity.despawned or gameState.tick <= entity.despawned) then
+      if (not entity._despawnTick or gameState.tick <= entity._despawnTick) then
         fn(entity);
       end
     end

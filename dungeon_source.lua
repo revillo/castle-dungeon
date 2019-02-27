@@ -26,7 +26,7 @@ local GameConstants = {
   TickInterval = TimeStep,
   MonsterSpeed = TimeStep * 3.0,
   PlayerSpeed = TimeStep * 6.0,
-  IceBulletSpeed = TimeStep * 10.0,
+  IceBulletSpeed = TimeStep * 20.0,
   EyeBulletSpeed = TimeStep * 4.0
 }
 
@@ -101,7 +101,7 @@ function handlePlayerInput(player, input)
     --Handle shooting ice
     if (input.mx) then
       local dx, dy = DGame.Utils.normalize(input.mx, input.my);
-      
+
       DGame:spawn(GameEntities.IceBullet, player.x, player.y, 1, 1, {
         dx = dx,
         dy = dy
