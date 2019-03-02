@@ -19,15 +19,22 @@ local GameEntities = {
 }
 
 local TimeStep = 1.0 / 60.0;
+
 local GameConstants = {
+  -- Configures view distance
+  ClientVisibility = 22,
+  -- Configures time step
+  TickInterval = TimeStep,
+  
+  -- Any custom constants
   RoomSize = 12,
   WorldSize = 200,
-  ClientVisibility = 22,
-  TickInterval = TimeStep,
   MonsterSpeed = TimeStep * 3.0,
   PlayerSpeed = TimeStep * 6.0,
   IceBulletSpeed = TimeStep * 20.0,
-  EyeBulletSpeed = TimeStep * 4.0
+  EyeBulletSpeed = TimeStep * 4.0,
+  PlayerStartX = 6,
+  PlayerStartY = 6
 }
 
 local DGame = Moat:new(
@@ -59,7 +66,7 @@ end
 function DGame:serverReceive(clientId, msg)
     
   if (msg.cmd == "request_spawn") then
-    DGame:spawnPlayer(clientId);
+    DGame:serverSpawnPlayer(clientId, GameConstants.PlayerStartX, GameConstants.PlayerStartY);
   end
   
 end
@@ -128,7 +135,8 @@ function DGame:playerUpdate(player, input)
     if (type == GameEntities.Spinner or type == GameEntities.Monster or type == GameEntities.EyeBullet) then
       --Higher fidelity hit detection
       if (DGame:getOverlapArea(player, entity) > 0.2) then
-        DGame:respawnPlayer(player);
+        DGame:respawnPlayer(player, GameConstants.PlayerStartX, GameConstants.PlayerStartY);
+        print("respawn");
         didRespawn = true;
         return;
       end
@@ -148,8 +156,8 @@ function DGame:playerUpdate(player, input)
 end
 
 local input = {};
-function DGame:clientUpdate()
-  if (not self:clientIsSpawned()) then
+function DGame:clientUpdate(dt)
+  if (not DGame:clientIsSpawned()) then
     return
   end
   
@@ -172,7 +180,7 @@ function DGame:clientUpdate()
     input.my = nil;
   end
     
-  DGame:setPlayerInput(input);
+  DGame:clientSetInput(input);
 end
 
 -- Drawing/Rendering functions
@@ -224,14 +232,14 @@ function drawWithEffects(entity, ...)
     Sprite.drawEntity(entity, Sprite.images.ice);
   end
 end
-
+ 
 -- Basic pass through function that calls drawWithEffects on all entity of type
 function drawEntities(type, ...)
   DGame:eachEntityOfType(type, drawWithEffects, ...);
 end
 
 function DGame:clientDraw()
-  if (not self:clientIsConnected()) then
+  if (not DGame:clientIsConnected()) then
     drawText("Connecting... signed in to castle?");
     return;
   end
@@ -241,12 +249,12 @@ function DGame:clientDraw()
     return;
   end
 
-  if (not self:clientIsSpawned()) then
+  if (not DGame:clientIsSpawned()) then
     drawText("Waiting for spawn...");
     return;
   end
     
-  local player = self:getPlayerState();
+  local player = DGame:getPlayerState();
 
   Sprite.cameraCenter.x = player.x + player.w * 0.5;
   Sprite.cameraCenter.y = player.y + player.h * 0.5;
@@ -411,10 +419,6 @@ function DGame:serverInitWorld()
   serverCreateMaze(10, 10);
 end
 
-function DGame:serverResetPlayer(player)
-  player.x, player.y = 6,6;
-end
-
 function DGame:clientResize(x, y)
   Sprite.offsetPx.x = x * 0.5;
   Sprite.offsetPx.y = y * 0.5;
@@ -509,7 +513,7 @@ function updateEye(eye, tick)
 end
 
 function updateEyeBullet(eyeBullet)
-  
+
   eyeBullet.x = eyeBullet.x + eyeBullet.dx * GameConstants.EyeBulletSpeed;
   eyeBullet.y = eyeBullet.y + eyeBullet.dy * GameConstants.EyeBulletSpeed
   
@@ -560,7 +564,6 @@ function updateIceBullet(bullet, tick)
   
   local dx = bullet.dx * GameConstants.IceBulletSpeed;
   local dy = bullet.dy * GameConstants.IceBulletSpeed;
-  
   DGame:moveEntity(bullet, bullet.x + dx, bullet.y + dy);
 
   local hitOnce = false;
@@ -588,8 +591,10 @@ function updateIceBullet(bullet, tick)
 end
 
 --Update non-player entitiess
-function DGame:worldUpdate(tick)
+function DGame:worldUpdate(dt)
 
+  -- Get the tick (time index) for the current frame
+  local tick = DGame:getTick();
   DGame:eachEntityOfType(GameEntities.Spinner, updateSpinner, tick);
   DGame:eachEntityOfType(GameEntities.Monster, updateMonster, tick);
   DGame:eachEntityOfType(GameEntities.Eye, updateEye, tick);

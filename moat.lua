@@ -189,7 +189,7 @@ function PlayerHistory.rebuild(ph, state, serverTick, moat)
   
   -- Find the ideal tick offset between client and server, and decide whether or not to use it
   
-  local idealTick = serverTick + math.ceil((moat:getPing()*0.001) / moat.Constants.TickInterval) + TICK_BUFFER;
+  local idealTick = serverTick + math.ceil((moat:clientGetPing()*0.001) / moat.Constants.TickInterval) + TICK_BUFFER;
   
   TICK_DEBUG = idealTick - serverTick;
   
@@ -258,6 +258,7 @@ function Moat:initClient()
   self.client = cs.client;
   self.share = cs.client.share;
   self.home = cs.client.home;
+  self.soundHistory = {};
   
   self.home.inputHistory = List.new(0);
   local ph = PlayerHistory.new(self.home.inputHistory);
@@ -272,6 +273,24 @@ function Moat:initClient()
   
   local tempUUID = 0;
   local tempCache = {};
+  
+  function self:playSound(source)
+    local history = self.soundHistory[source];
+    if (history) then
+      local lastTime = history.lastTime;
+      local now = love.timer.getTime();
+      --Wait 0.1 seconds before replaying a sound
+      if (now - lastTime > 0.1) then
+        love.audio.play(source:clone());
+        history.lastTime = now;
+      end
+    else
+      self.soundHistory[source] = {
+        lastTime = love.timer.getTime()
+      }
+      love.audio.play(source:clone());
+    end
+  end
   
   --Client spawns a temp
   function self:spawn(type, x, y, w, h, data)
@@ -298,6 +317,8 @@ function Moat:initClient()
       
       tempCache[entity.uuid] = {};
       tempCache[entity.uuid][gameState.tick] = Utils.copyInto({}, entity);
+      
+      return entity;
   end
   
   function self:cacheTemporaries()
@@ -307,27 +328,20 @@ function Moat:initClient()
     end
   end
   
-  function self:spawnPlayer()
-  end
-  
   function self:clientKeyPressed(key) end
-  
   function self:clientKeyReleased(key) end
-  
-  function self:clientMousePressed() end
-  
+  function self:clientMousePressed() end  
   function self:clientMouseMoved() end
-  
-  function self:clientLoad() end
+  function self:clientWheelMoved(dx, dy) end
   function self:clientResize() end
+
+  function self:clientOnConnected() end
+  function self:clientOnDisconnected() end
+  function self:clientLoad() end
   
   function self:getPlayerState()
   
     return PlayerHistory.getLastState(ph);
-    
-  end
-  
-  function self:clientTick(gameState)
     
   end
     
@@ -347,12 +361,12 @@ function Moat:initClient()
     end
   end
   
-  function self:getPing()
+  function self:clientGetPing()
       return cs.client.getPing();
       --return self.smoothedPing;
   end
   
-  function self:clientUpdate()
+  function self:clientUpdate(dt)
   
   end
   
@@ -373,10 +387,10 @@ function Moat:initClient()
     --print("tick", ph.tick);
 
     
-    self:clientUpdate(self.gameState);
+    self:clientUpdate(self.Constants.TickInterval);
   end
 
-  function self:setPlayerInput(input)    
+  function self:clientSetInput(input)    
     PlayerHistory.updateInput(ph, input, self.gameState.tick);
   end
   
@@ -527,6 +541,10 @@ function Moat:initServer()
       return lastUuid;
     end
     
+    function self:playSound()
+    
+    end
+    
     function self:spawn(type, x, y, w, h, data)
       
       local uuid;
@@ -566,6 +584,30 @@ function Moat:initServer()
       return entity;
     end
     
+    function self:serverSpawnPlayer(clientId, x, y, w, h, data)
+      
+      if (self.entityForClient[clientId]) then
+        self:despawn(self.entityForClient[clientId]);
+      end
+      
+      local player = {
+        x = x or 0,
+        y = y or 0,
+        w = w or 1,
+        h = h or 1
+      }
+      
+      local data = data or {};
+      --self:serverResetPlayer(player);
+      
+      data.clientId = clientId;
+      
+      self:spawn(self.EntityTypes.Player, 
+        player.x, player.y, player.w, player.h, data
+      );
+    
+    end
+    
     function self:despawn(entity)
       if not entity then return end;
       
@@ -576,13 +618,8 @@ function Moat:initServer()
       self:destroy(entity);
     end
 
-    function self:respawnPlayer(player)
-      self:despawn(player);
-      self:spawnPlayer(player.clientId);
-    end
-    
-    function self:setPlayerInput()
-    
+    function self:respawnPlayer(player, x, y, w, h, data)
+      self:serverSpawnPlayer(player.clientId, x, y, w, h, data);
     end
     
     function self:serverInitWorld()
@@ -627,14 +664,14 @@ function Moat:initServer()
       end -- each player
     end -- updateAllPlayers
     
-    function self:serverUpdate()
+    function self:serverUpdate(dt)
       
     end
     
     function self:advanceGameState() 
       self:serverUpdatePlayers();
-      self:worldUpdate(self.gameState.tick);
-      self:serverUpdate(self.gameState.tick);
+      self:worldUpdate(self.Constants.TickInterval);
+      self:serverUpdate(self.Constants.TickInterval);
     end
     
     function self:serverSend(clientId, msg)
@@ -644,31 +681,15 @@ function Moat:initServer()
     function self:serverReceive(clientId, msg) 
     
     end
-    
-    function self:serverResetPlayer(player)
-
-    end
        
-    function self:spawnPlayer(clientId)
-      
-      local x,y = 0,0;
-      local width, height = 1, 1;
-      local player = {
-        x = x,
-        y = y,
-        w = width,
-        h = height
-      }
-      
-      self:serverResetPlayer(player);
-      
-      player.clientId = clientId;
-      
-      self:spawn(self.EntityTypes.Player, 
-        player.x, player.y, player.w, player.h, player
-      );
+    function self:serverOnClientConnected(clientId)
     
     end
+    
+    function self:serverOnClientDisconnected(clientId)
+    
+    end
+    
 end
 
 function Moat:initGameState()
@@ -726,11 +747,16 @@ function Moat:initCommon()
   end
   
   function self:destroy(entity)   
-      --print("destroy", entity.uuid);
       gameState.space:remove(entity);
       gameState.entitiesByType[entity.type][entity.uuid] = nil;
       gameState.entities[entity.uuid] = nil;
       gameState.entityCounts[entity.type] = gameState.entityCounts[entity.type] - 1;
+  end
+  
+  function self:eachEntity(fn)
+    for uuid, entity in pairs(gameState.entities) do
+      fn(entity)
+    end
   end
   
   function self:eachEntityOfType(type, fn, ...)
@@ -848,9 +874,13 @@ function Moat:runServer()
     --(type, x, y, w, h, data)
     function server.connect(id)
       --self:spawnPlayer(id);
+      self:serverOnClientConnected(id);
     end
     
     function server.disconnect(id)
+      
+      self:serverOnClientDisconnected(id);
+      
       self:despawn(self.entityForClient[id]);
     end
     
@@ -902,6 +932,14 @@ function Moat:runClient()
     end
   end
 
+  function client.connect()
+    self:clientOnConnected();
+  end
+  
+  function client.disconnect()
+    self:clientOnDisconnected();
+  end
+  
   function client.load()
     self:clientLoad();
   end
@@ -952,6 +990,10 @@ function Moat:runClient()
   
   function client.mousemoved(x, y)
     self:clientMouseMoved(x, y);
+  end
+  
+  function client.wheelmoved(dx, dy)
+    self:clientWheelMoved(dx, dy);
   end
   
   --[[

@@ -21,6 +21,8 @@ local MyGame = Moat:new(
   GameConstants
 );
 
+local Sounds = {};
+
 local showMenu = true;
 local tileSizePx = 30.0;
 local cameraCenter = {x = 0, y = 0};
@@ -37,6 +39,7 @@ end
 function MyGame:clientMousePressed(x, y)
   if (MyGame:clientIsConnected() and showMenu) then
     
+    -- Send any table as a message to server using clientSend
     MyGame:clientSend({
       cmd = "request_spawn"
     });
@@ -45,19 +48,33 @@ function MyGame:clientMousePressed(x, y)
   end
 end
 
-function MyGame:serverReceive(clientId, msg)
-  if (msg.cmd == "request_spawn") then
-    MyGame:spawnPlayer(clientId);
-  end
-  
+function spawnNewPlayer(clientId)
+  local x, y = math.random(GameConstants.WorldSize), math.random(GameConstants.WorldSize) 
+  local w, h = 1, 1;    
+  MyGame:serverSpawnPlayer(clientId, x, y, w, h);
 end
 
---Update client for every game tick
+-- Server receives a send command
+function MyGame:serverReceive(clientId, msg)
+  if (msg.cmd == "request_spawn") then
+    spawnNewPlayer(clientId);
+  end
+end
+
+-- We can also have a player spawn immediately.
+-- Uncomment the following function to have player spawn on connect
+function MyGame:serverOnClientConnected(clientId)
+  spawnNewPlayer(clientId);
+end
+
+--Update client for every game tick. 
 local input = {};
-function MyGame:clientUpdate(gameState)
+function MyGame:clientUpdate(dt)
   if (not MyGame:clientIsSpawned()) then
     return
   end
+  
+  showMenu = false;
   
   --Set inputs
   input.w = love.keyboard.isDown("w");
@@ -72,7 +89,9 @@ function MyGame:clientUpdate(gameState)
   input.mx = ((mousePos.x - offsetPx.x) / mouseScale);
   input.my = ((mousePos.y - offsetPx.y) / mouseScale);
   
-  MyGame:setPlayerInput(input);
+  -- Input to be shared with server to determine player motion. 
+  -- Menu clicks and other UI/UX inputs need not be sent to the server and can be handled separately.
+  MyGame:clientSetInput(input);
   
 end
 
@@ -130,15 +149,24 @@ function MyGame:playerUpdate(player, input)
   --Handle interactions with other entities, (players and food)
   MyGame:eachOverlapping(player, function(entity)
     
+    --Interact with food
     if (entity.type == GameEntities.Food) then
       MyGame:despawn(entity);
       resizePlayer(player, player.w + GameConstants.FoodGain);
+      MyGame:playSound(Sounds.pop);
     end
     
+    --Interact with another player
     if (entity.type == GameEntities.Player) then
       if (player.w > entity.w) then
+          --I get bigger
           resizePlayer(player, player.w + entity.w / 5.0);
-          self:respawnPlayer(entity);
+          MyGame:playSound(Sounds.pop);
+          --Other player respawns
+          local x, y = math.random(GameConstants.WorldSize), math.random(GameConstants.WorldSize) 
+          local w, h = 1, 1;    
+          
+          self:respawnPlayer(entity, x, y, w, h);
       end
     end
   end);
@@ -162,8 +190,15 @@ function drawFood(food)
   drawRect(food);
 end
 
+function randomizeColor(seed)
+  local r = math.sin(seed * 123.456 + 789) * 0.2 + 0.8;
+  local g = math.cos(seed * 123.456 + 789) * 0.2 + 0.8;
+  local b = math.sin(seed * 987.654 + 321) * 0.2 + 0.8;
+  love.graphics.setColor(r, g, b, 1.0);
+end
+
 function drawPlayer(player)
-  love.graphics.setColor(1.0, 1.0, 1.0, 1.0);
+  randomizeColor(player.uuid);
   drawRect(player);
 end
 
@@ -187,7 +222,6 @@ function drawText(text)
     love.graphics.setColor(1,1,1,1);
     love.graphics.print(text, 10, 10, 0, 2, 2);
 end
-
 
 function MyGame:clientDraw() 
 
@@ -216,7 +250,7 @@ function MyGame:clientDraw()
   self:eachEntityOfType(GameEntities.Player, drawPlayer);
 end
 
-
+--Spawns a food entity at a random location
 function spawnFood()
     local x = math.random() * (GameConstants.WorldSize - 0.3);
     local y = math.random() * (GameConstants.WorldSize - 0.3);
@@ -227,13 +261,16 @@ function spawnFood()
     );
 end
 
+-- Called when the server is started
 function MyGame:serverInitWorld()
   for x = 1, GameConstants.MaxFood do
      spawnFood();
   end
 end
 
-function MyGame:serverUpdate()
+
+--Since food is spawned randomly, client can't predict spawn locations. So do it in serverUpdate rather than worldUpdate
+function MyGame:serverUpdate(dt)
   
   if (self:numEntitiesOfType(GameEntities.Food) < GameConstants.MaxFood) then
     if (math.random() < 0.1) then
@@ -243,20 +280,21 @@ function MyGame:serverUpdate()
 
 end
 
+-- Callback for when player's window is resized.
 function MyGame:clientResize(x, y)
   offsetPx.x = x * 0.5;
   offsetPx.y = y * 0.5;
 end
 
---Calls when a player spawns 
-function MyGame:serverResetPlayer(player)
-  player.x , player.y = math.random(GameConstants.WorldSize), math.random(GameConstants.WorldSize) 
-  player.w , player.h = 1, 1;
-end
-
 function MyGame:clientLoad()
+
+  --Can call resize handler manually just to set the window data
   local w, h = love.graphics.getDimensions();
   self:clientResize(w, h);
+  
+  --Load any images, sounds, shaders etc..
+  Sounds.pop = love.audio.newSource("audio/pop.ogg", "static");
+  
 end
 
 MyGame:run();

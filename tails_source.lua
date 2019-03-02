@@ -15,7 +15,7 @@ local GameConstants = {
   WorldSize = 100,
   TickInterval = TimeStep,
   PlayerSpeed = TimeStep * 10.0,
-  MaxFood = 100,
+  MaxFood = 50,
   ClientVisibility = 40,
   TailMaxAngle = 0.8, -- radians
   TurningMaxAngle = 0.1
@@ -31,6 +31,18 @@ local tileSizePx = 30.0;
 local cameraCenter = {x = 0, y = 0};
 local offsetPx = {x = 0, y = 0};
 local mousePos = {x = 0, y = 0};
+
+
+function getNewPlayerState()
+  local player = {};
+  player.x , player.y = math.random(GameConstants.WorldSize), math.random(GameConstants.WorldSize) 
+  player.w , player.h = 1, 1;
+  
+  player.dirX = 0.0;
+  player.dirY = -1.0;
+  player.tail = List.new(1); -- Create an empty tails array that is 1 indexed
+  return player;
+end
 
 
 function MyGame:clientMouseMoved(x, y)
@@ -51,15 +63,19 @@ end
 
 function MyGame:serverReceive(clientId, msg)
   if (msg.cmd == "request_spawn") then
-    self:spawnPlayer(clientId);
+    local playerData = getNewPlayerState();
+    self:serverSpawnPlayer(clientId, 
+    playerData.x, playerData.y, 
+    playerData.w, playerData.h, 
+    playerData);
   end
   
 end
 
 --Update client for every game tick
 local input = {};
-function MyGame:clientUpdate(gameState)
-  if (not self:clientIsSpawned()) then
+function MyGame:clientUpdate(dt)
+  if (not MyGame:clientIsSpawned()) then
     return
   end
   
@@ -69,7 +85,7 @@ function MyGame:clientUpdate(gameState)
   input.mx = ((mousePos.x - offsetPx.x) / mouseScale);
   input.my = ((mousePos.y - offsetPx.y) / mouseScale);
   
-  MyGame:setPlayerInput(input);
+  MyGame:clientSetInput(input);
   
 end
 
@@ -127,7 +143,7 @@ function MyGame:playerUpdate(player, input)
       --player.dirX, player.dirY = MyGame.Math2D.normalize(x, y);
     end
     
-  end
+  end -- End input handling
 
   
    --Clamp player to game boundaries
@@ -156,36 +172,56 @@ function MyGame:playerUpdate(player, input)
     
   end
   
+  local didRespawn = false;
   --Handle interactions with other entities, (players and food)
   MyGame:eachOverlapping(player, function(entity)
     
+    --Don't do any more work if respawn event has fired already
+    if (didRespawn) then return end;
+    
+    --Eat food and spawn a new tail segment
     if (entity.type == GameEntities.Food) then
       --Remove the food
       MyGame:despawn(entity);
-      
-      --Handle tail creation on server only
-      if (self.isServer) then
-
+     
         local tx, ty = player.x - player.dirX, player.y - player.dirY;
+        local dirX, dirY = player.dirX, player.dirY;
         
+        --Find position at end of tail
         if (List.length(player.tail) > 0) then
           local lastTailUuid = player.tail[player.tail.last];
           local tailEntity = MyGame:getEntity(lastTailUuid);
           if (not tailEntity) then return end;
           tx, ty = tailEntity.x - tailEntity.dirX, tailEntity.y - tailEntity.dirY;
+          dirX, dirY = tailEntity.dirX, tailEntity.dirY;
         end
       
-        MyGame:spawn(GameEntities.Tail, tx, ty, 1.0, 1.0, {
+        local entity = MyGame:spawn(GameEntities.Tail, tx, ty, 1.0, 1.0, {
+          dirX = dirX,
+          dirY = dirY
         });
         
-        List.pushright(player.tail, MyGame:serverGetLastUuid());
-      end
-      
+        --Push UUID of this spawn to tail list
+        List.pushright(player.tail, entity.uuid);      
     end
     
+    
+    --Player hit a tail
     if (entity.type == GameEntities.Player or entity.type == GameEntities.Tail) then
+        
         if (player.tail[1] ~= entity.uuid) then
-           self:respawnPlayer(player);   
+            
+            didRespawn = true;
+        
+           --Despawn the tail segments
+           List.each(player.tail, function(tailId)
+             MyGame:despawn(MyGame:getEntity(tailId));
+           end);
+        
+           local playerData = getNewPlayerState();
+           MyGame:respawnPlayer(player, 
+            playerData.x, playerData.y, 
+            playerData.w, playerData.h, playerData);   
         end
         
     end
@@ -210,12 +246,14 @@ function drawRect(e)
 end
 
 
-function drawCircle(e)
+function drawCircle(e, radiusScale)
+  
+  radiusScale = radiusScale or 1;
   
   love.graphics.circle("fill", 
     (e.x + e.w * 0.5 - cameraCenter.x) * tileSizePx + offsetPx.x, 
     (e.y + e.h * 0.5 - cameraCenter.y) * tileSizePx + offsetPx.y, 
-    e.w * tileSizePx * 0.5 
+    e.w * tileSizePx * 0.5 * radiusScale
   );
   
 end
@@ -226,6 +264,15 @@ function drawFood(food)
 end
 
 function drawPlayer(player)
+  love.graphics.setColor(1.0, 1.0, 1.0, 1.0);
+  drawCircle(player);
+  love.graphics.setColor(0,0,0,1);
+  drawCircle(player, 0.6);
+  love.graphics.setColor(1.0, 1.0, 1.0, 1.0);
+  drawCircle(player, 0.25);
+end
+
+function drawTail(player)
   love.graphics.setColor(1.0, 1.0, 1.0, 1.0);
   drawCircle(player);
 end
@@ -277,7 +324,7 @@ function MyGame:clientDraw()
   drawGrid();
   self:eachEntityOfType(GameEntities.Food, drawFood);
   self:eachEntityOfType(GameEntities.Player, drawPlayer);
-  self:eachEntityOfType(GameEntities.Tail, drawPlayer);
+  self:eachEntityOfType(GameEntities.Tail, drawTail);
 end
 
 
@@ -312,15 +359,6 @@ function MyGame:clientResize(x, y)
   offsetPx.y = y * 0.5;
 end
 
---Calls when a player spawns 
-function MyGame:serverResetPlayer(player)
-  player.x , player.y = math.random(GameConstants.WorldSize), math.random(GameConstants.WorldSize) 
-  player.w , player.h = 1, 1;
-  
-  player.dirX = 0.0;
-  player.dirY = -1.0;
-  player.tail = List.new(1); -- Create an empty tails array that is 1 indexed
-end
 
 function MyGame:clientLoad()
   local w, h = love.graphics.getDimensions();

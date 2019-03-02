@@ -40,4 +40,10 @@ function List.length(list)
   return (list.last - list.first) + 1;
 end
 
+function List.each(list, fn)
+  for i = list.first, list.last do
+    fn(list[i]);
+  end
+end
+
 return List;
