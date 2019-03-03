@@ -753,9 +753,9 @@ function Moat:initCommon()
       gameState.entityCounts[entity.type] = gameState.entityCounts[entity.type] - 1;
   end
   
-  function self:eachEntity(fn)
+  function self:eachEntity(fn, ...)
     for uuid, entity in pairs(gameState.entities) do
-      fn(entity)
+      fn(entity, ...)
     end
   end
   

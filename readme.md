@@ -47,14 +47,14 @@ function Moat:getOverlapArea(entityA, entityB) -- Return the overlapping area of
 function Moat:numEntitiesOfType(type)
 function Moat:getEntity(uuid) 
 function Moat:destroy(entity) -- Destroys an entity (Prefer using despawn instead)
-function Moat:eachEntity(fn) -- Calls fn on each entity
-function Moat:eachEntityOfType(type, fn, ...)
-function Moat:moveEntity(entity, x, y, w, h) -- Update bounds for use with collision detection
+function Moat:eachEntity(fn, [...]) -- Calls fn on each entity, extra arguments passed through
+function Moat:eachEntityOfType(type, fn, [...])
+function Moat:moveEntity(entity, [x], [y], [w], [h]) -- Update bounds for use with collision detection
 function Moat:eachOverlapping(entity, fn) -- Calls fn on every entity that overlaps with current entity's bounds
 
-function Moat:respawnPlayer(playerEntity, x, y, w, h, data) -- Respawn an existing player. Hides player locally and waits for server respawn
-function Moat:playSound(source) -- Play a love audio source
-function Moat:spawn(type, x, y, w, h, data) -- Spawn a new entity (temporary on client)
+function Moat:respawnPlayer(playerEntity, x, y, w, h, [data]) -- Respawn an existing player. Hides player locally and waits for server respawn
+function Moat:playSound(source) -- Play a love audio source (no-op on server)
+function Moat:spawn(type, x, y, w, h, [data]) -- Spawn a new entity (temporary on client)
 function Moat:despawn(entity) -- Despawn an existing entity
 ```
 ##### Internal
@@ -110,7 +110,7 @@ function Moat:serverOnClientDisconnected(clientId)
 ```
 ##### Utilities
 ``` lua
-function Moat:serverSpawnPlayer(clientId, x, y, w, h, data)
+function Moat:serverSpawnPlayer(clientId, x, y, w, h, [data])
 function Moat:serverUpdate(dt)
 function Moat:serverSend(clientId, msg)
 ```
@@ -120,10 +120,7 @@ function Moat:advanceGameState()
 function Moat.serverEntityRelevance(entities, clientId)
 function Moat:serverUpdatePlayers()
 ```
-##### No-Ops (These can be called but do nothing)
-``` lua
-function self:playSound()
-```
+
 ## Release notes
 
 #### Version 1.1
