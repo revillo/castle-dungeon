@@ -7,6 +7,8 @@ Check out the medium posts for overview / tutorials:
 
 [Part 1 - Introducing Moat / Make a simple multiplayer IO game](https://medium.com/@olivver/introducing-moat-a-multiplayer-framework-for-castle-32c92c8365ca)
 
+[Part 2 - Making a Multiplayer Dungeon Crawler](https://medium.com/@olivver/moat-part-2-multiplayer-dungeon-crawler-cea6fe79801e)
+
 Add moat to your project:
 ``` lua
 -- game_source.lua
