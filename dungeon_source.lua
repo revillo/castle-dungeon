@@ -136,7 +136,7 @@ function DGame:playerUpdate(player, input)
       --Higher fidelity hit detection
       if (DGame:getOverlapArea(player, entity) > 0.2) then
         DGame:respawnPlayer(player, GameConstants.PlayerStartX, GameConstants.PlayerStartY);
-        print("respawn");
+        
         didRespawn = true;
         return;
       end
@@ -592,7 +592,6 @@ end
 
 --Update non-player entitiess
 function DGame:worldUpdate(dt)
-
   -- Get the tick (time index) for the current frame
   local tick = DGame:getTick();
   DGame:eachEntityOfType(GameEntities.Spinner, updateSpinner, tick);

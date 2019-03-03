@@ -244,7 +244,7 @@ function PlayerHistory.advance(ph, moat, input)
   moat.gameState.tick = ph.tick;
 
   moat:playerUpdate(ph.state, input);
-  moat:worldUpdate(ph.tick);  
+  moat:worldUpdate(moat.Constants.TickInterval);  
   moat:cacheTemporaries();
 
   ph.tick = ph.tick + 1;
@@ -725,7 +725,7 @@ function Moat:initCommon()
     
   end
   
-  function self:worldUpdate(gameState)
+  function self:worldUpdate(dt)
   
   end
   
