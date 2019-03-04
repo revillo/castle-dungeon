@@ -42,6 +42,7 @@ function Moat:worldUpdate(dt) -- How npc entities update on each tick
 ```
 ##### Utilities
 ``` lua
+function Moat:run() -- Run the game
 function Moat:getTick() -- Returns current tick of game state, like a timestamp
 function Moat:getOverlapArea(entityA, entityB) -- Return the overlapping area of two entity hitboxes
 function Moat:numEntitiesOfType(type)
