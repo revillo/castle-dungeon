@@ -36,19 +36,19 @@ castle://raw.githubusercontent.com/revillo/castle-dungeon/master/tails.lua) - Mu
 #### Common (shared between client and server)
  
 ##### Entity Built-In Values
-
+``` lua
 x -- x position
 y -- y position
 w -- width in units
 h -- height in units
 uuid -- unique idenitifier
 clientId -- For player entities, client's connection idenitifier
-
+```
 ##### Hidden Entity Values
-
+``` lua
 _spawnTick -- Spawn time for temporaries
 _despawnTick -- Despawn time for locally despawned entities
-
+```
 ##### GameConstants (Default Value)
 ``` lua
 TickInterval -- Time between game ticks, (1/60 seconds)
@@ -145,6 +145,12 @@ function Moat:serverUpdatePlayers()
 ```
 
 ## Release notes
+
+#### Version 1.2
+
+- Added functions
+
+  Moat:serverGetEntityForClientId
 
 #### Version 1.1
 
