@@ -35,6 +35,27 @@ castle://raw.githubusercontent.com/revillo/castle-dungeon/master/tails.lua) - Mu
 ## API Quick Reference (v1.1)
 #### Common (shared between client and server)
  
+##### Entity Built-In Values
+
+x -- x position
+y -- y position
+w -- width in units
+h -- height in units
+uuid -- unique idenitifier
+clientId -- For player entities, client's connection idenitifier
+
+##### Hidden Entity Values
+
+_spawnTick -- Spawn time for temporaries
+_despawnTick -- Despawn time for locally despawned entities
+
+##### GameConstants (Default Value)
+``` lua
+TickInterval -- Time between game ticks, (1/60 seconds)
+ClientVisibility -- How far a player can see around their entity (20 units)
+CellSize -- Size of cell in spatial hash acceleration structure (5 units)
+MaxHistory -- How many ticks worth of input data to store. (120)
+``` 
 ##### Callbacks
 ``` lua
 function Moat:playerUpdate(player, input) -- Defines how a player updates on each tick
@@ -42,6 +63,7 @@ function Moat:worldUpdate(dt) -- How npc entities update on each tick
 ```
 ##### Utilities
 ``` lua
+function Moat:new(EntityTypes, GameConstants) --EntityTypes is enum of game types
 function Moat:getTick() -- Returns current tick of game state, like a timestamp
 function Moat:getOverlapArea(entityA, entityB) -- Return the overlapping area of two entity hitboxes
 function Moat:numEntitiesOfType(type)
@@ -113,6 +135,7 @@ function Moat:serverOnClientDisconnected(clientId)
 function Moat:serverSpawnPlayer(clientId, x, y, w, h, [data])
 function Moat:serverUpdate(dt)
 function Moat:serverSend(clientId, msg)
+function Moat:serverGetEntityForClientId(clientId) -- Get player's game entity from their clientId
 ```
 ##### Internal
 ``` lua

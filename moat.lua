@@ -46,7 +46,7 @@ end
 function Utils.lerp(a, b, t)
   return a * (1-t) + b * t;
 end
-Math2D.lerp = Utils.lerp;
+Math.lerp = Utils.lerp;
 
 -- Rotate over angle a in radians
 function Math2D.rotate(x, y, a)
@@ -700,6 +700,10 @@ function Moat:initServer()
     
     function self:serverOnClientDisconnected(clientId)
     
+    end
+    
+    function self:serverGetEntityForClientId(clientId)
+      return self.entityForClient[clientId];
     end
     
 end

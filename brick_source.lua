@@ -9,7 +9,7 @@ local GameEntities = {
 }
 
 local GameConstants = {
-  ClientVisibility = 200,
+  ClientVisibility = 50,
   BallSpeed = 15,
   PaddleHeight = 6,
   PaddleWidth = 1,
@@ -91,7 +91,7 @@ function drawBorders()
     1 * unitSizePx
   )
   
-  x, y = worldToPx(1, GameConstants.GameHeight);
+  x, y = worldToPx(1, GameConstants.GameHeight + 1);
 
   love.graphics.rectangle("fill",
     x, y,
@@ -118,26 +118,16 @@ function BrickGame:clientLoad()
 end
 
 function BrickGame:playerUpdate(player, input)
-
+  local myBall = nil;
+   
+  if (player.hasBall) then
+    myBall = BrickGame:getEntity(player.hasBall);
+  end
+   
   if (input) then
-  
-     local myBall = nil;
-     
-     if (player.hasBall) then
-      myBall = BrickGame:getEntity(player.hasBall);
-     end
-  
     --Center paddle to mouse
     if (input.my) then
-      player.y = input.my - player.h * 0.5;
-      BrickGame:moveEntity(player);
-      
-      --Move ball too if owner
-      if (myBall) then
-        myBall.y = input.my - myBall.h;
-        myBall.x = player.x + 1.5;
-      end
-      
+      player.targetY = input.my - player.h * 0.5;  
     end
     
     --Fire if we own the ball
@@ -145,11 +135,36 @@ function BrickGame:playerUpdate(player, input)
       
       --Ball referenced by uuid
       myBall.dx = 1;
+      
+      -- Flip it for right side player
+      if (player.position == PlayerPosition.Right) then
+        myBall.dx = -1;
+      end
+      
       myBall.dy = 0;
       
       player.hasBall = nil;
-      
+      myBall = nil;
     end
+  end
+  
+      
+  if (player.targetY) then
+    player.y = Moat.Math.lerp(player.y, player.targetY, 0.1);
+    
+    if (myBall) then
+      myBall.y = player.y + (player.h * 0.5) - (myBall.h * 0.5)
+      myBall.x = player.x + 1.5;
+      
+       -- Flip it for right side player
+      if (player.position == PlayerPosition.Right) then
+        myBall.x = player.x - 1.5;
+      end
+      
+      BrickGame:moveEntity(myBall);
+    end
+    
+    BrickGame:moveEntity(player);
   end
   
 end
@@ -178,6 +193,26 @@ function reflect(ix, iy, nx, ny)
   
 end
 
+function resetBall(ball)
+
+  local existingPlayer = nil;
+      
+  BrickGame:eachEntityOfType(GameEntities.Player, function(player)
+    existingPlayer = player;
+  end);
+  
+  if (existingPlayer) then
+    existingPlayer.hasBall = ball.uuid;
+    ball.dx = 0;
+    ball.dy = 0;
+  end
+  
+  --Just move the ball away from the map, next time a player updates it will be in the right place
+  ball.x = -100;
+  ball.y = -100;
+
+end
+
 function updateBall(ball, dt)
 
     local vx, vy = ball.dx * dt * GameConstants.BallSpeed, ball.dy * dt * GameConstants.BallSpeed;
@@ -190,18 +225,16 @@ function updateBall(ball, dt)
       ball.y = Moat.Math.clamp(ball.y, 0, GameConstants.GameHeight);
     end
     
-    if (ball.x > GameConstants.GameWidth) then
-      ball.x = GameConstants.GameWidth;
-      ball.dx = -math.abs(ball.dx);
-    end
-    
-    if (ball.x < 0) then
-      ball.x = 0;
-      ball.dx = math.abs(ball.dx);
+    --Handle out of bounds on server only just to make sure ball is reset properly
+    if (BrickGame.isServer and ball.x < -1 or ball.x > GameConstants.GameWidth + 1) then
+      resetBall(ball);
+      return;
     end
     
     local mx, my = getEntityCenter(ball);
     local didBounce = false;
+    
+    BrickGame:moveEntity(ball);
 
     BrickGame:eachOverlapping(ball, function(entity)
         if(didBounce) then return end;
@@ -217,20 +250,24 @@ function updateBall(ball, dt)
           local nx, ny = getMajorAxis(dx, dy);
           --Reflect ball velocity about normal
           ball.dx, ball.dy = reflect(ball.dx, ball.dy, nx, ny);
+          
           didBounce = true;
           
         end
         
         if (entity.type == GameEntities.Player) then
           local dx, dy = mx - ex, my - ey;
-          
+          local push;
           if (entity.position == PlayerPosition.Left) then
-            dx = dx + 1.0;
+            push = 1.0;
           else
-            dx = dx - 1.0;
+            push = -1.0;
           end
           
-          ball.dx, ball.dy = Moat.Math2D.normalize(dx, dy);
+          ball.dx, ball.dy = Moat.Math2D.normalize(dx + push, dy);
+          ball.x = entity.x + push;
+   
+          BrickGame:moveEntity(ball);
           didBounce = true;
         end
     end);
@@ -239,6 +276,25 @@ end
 
 function BrickGame:worldUpdate(dt)
   BrickGame:eachEntityOfType(GameEntities.Ball, updateBall, dt)
+end
+
+function BrickGame:serverOnClientDisconnected(clientId)
+  
+  local dcPlayer = BrickGame:serverGetEntityForClientId(clientId);
+  local numPlayers = BrickGame:numEntitiesOfType(GameEntities.Player);
+  
+  if (dcPlayer.hasBall) then  
+    if (numPlayers == 0) then
+      BrickGame:despawn(BrickGame:getEntity(dcPlayer.hasBall.uuid));
+    else      
+      BrickGame:eachEntityOfType(GameEntities.Player, function(player)
+        if (not player.hasBall) then
+          player.hasBall = dcPlayer.hasBall
+        end
+      end);
+    end
+  end
+  
 end
 
 function BrickGame:serverOnClientConnected(clientId)  
@@ -263,7 +319,7 @@ function BrickGame:serverOnClientConnected(clientId)
     --Place second player opposite first player
     if (existingPlayer.position == PlayerPosition.Left) then
       playerPosition = PlayerPosition.Right;
-      playerX = 30;
+      playerX = GameConstants.GameWidth;
     end
   
   else
@@ -292,6 +348,18 @@ function serverSpawnBricks()
     local spawn = BrickGame:spawn(GameEntities.Brick, (x-2) * brickMargin + (GameConstants.GameWidth * 0.5), (y-2.5) * brickMargin + (GameConstants.GameHeight * 0.5), brickSize, brickSize);
   end end
   
+end
+
+function BrickGame:serverUpdate(dt)
+  --Respawn bricks when cleared
+  if (BrickGame:numEntitiesOfType(GameEntities.Brick) == 0) then
+    
+    serverSpawnBricks();
+    self:eachEntityOfType(GameEntities.Ball, function(ball)
+      resetBall(ball);
+    end);
+    
+  end
 end
 
 function BrickGame:serverInitWorld()
