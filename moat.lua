@@ -20,6 +20,14 @@ function Math.clamp(a, lo, hi)
 
 end
 
+function Math.sign(scalar)
+  
+  if (scalar < 0.0) then return -1 end;
+  if (scalar > 0.0) then return 1 end;
+  return 0.0;
+  
+end
+
 function Utils.copyInto(toTable, fromTable)
   
   if (fromTable) then
@@ -90,10 +98,14 @@ function Utils.distance(entityA, entityB)
 end
 Entity.distance = Utils.distance;
 
+function Math2D.dot(x1, y1, x2, y2)
+  return x1 * x2 + y1 * y2;
+end
+
 --Signed angle between two normalized vectors
 function Math2D.signedAngle(x1, y1, x2, y2)
   
-  local dot = x1 * x2 + y1 * y2;
+  local dot = Math2D.dot(x1, y1, x2, y2);
   
   if (dot > 0.99) then  
     return 0.0;
