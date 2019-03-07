@@ -254,7 +254,7 @@ function DGame:clientDraw()
     return;
   end
     
-  local player = DGame:getPlayerState();
+  local player = DGame:clientGetPlayerState();
 
   Sprite.cameraCenter.x = player.x + player.w * 0.5;
   Sprite.cameraCenter.y = player.y + player.h * 0.5;
