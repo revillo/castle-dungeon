@@ -37,7 +37,7 @@ castle://raw.githubusercontent.com/revillo/castle-dungeon/master/tails.lua) - Mu
  
 ##### Callbacks
 ``` lua
-function Moat:playerUpdate(player, input) -- Defines how a player updates on each tick
+function Moat:playerUpdate(player, input, dt) -- Defines how a player updates on each tick
 function Moat:worldUpdate(dt) -- How npc entities update on each tick
 ```
 ##### Utilities
