@@ -339,7 +339,7 @@ function Moat:initClient()
   function self:clientOnDisconnected() end
   function self:clientLoad() end
   
-  function self:getPlayerState()
+  function self:clientGetPlayerState()
   
     return PlayerHistory.getLastState(ph);
     
