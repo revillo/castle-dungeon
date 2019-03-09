@@ -143,7 +143,7 @@ function BrickGame:playerUpdate(player, input)
       
       myBall.dy = 0;
       
-      player.hasBall = nil;
+      player.hasBall = false;
       myBall = nil;
     end
   end
@@ -303,7 +303,7 @@ function BrickGame:serverOnClientConnected(clientId)
   local playerX = 1;
   
   local numPlayers = BrickGame:numEntitiesOfType(GameEntities.Player);
-  local hasBall = nil;
+  local hasBall = false;
   
   if (numPlayers > 2) then
     -- Todo handle more than 2 players
