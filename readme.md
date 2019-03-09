@@ -22,7 +22,15 @@ Then make a second file:
 USE_CASTLE_CONFIG = true
 require("game_source")
 ```
-Now anyone can run game_castle.lua in the castle app to play your multiplayer game in a production environment.
+Now anyone with a castle account can run game_castle.lua in the castle app to play your multiplayer game in a production environment. Castle will set up a server automatically.
+
+To create a local testing environment, make a test server:
+``` lua
+-- game_local_server.lua
+CASTLE_SERVER_LOCAL = true
+require("game_source")
+```
+Run game_local_server.lua in one castle app, and run game_source.lua in another, the source will default to a local client.
 
 ## Play the tutorial games
 
@@ -30,7 +38,9 @@ castle://raw.githubusercontent.com/revillo/castle-dungeon/master/munch.lua -  Ea
 
 castle://raw.githubusercontent.com/revillo/castle-dungeon/master/dungeon.lua - Dungeon crawler / roguelike topdown adventure (dungeon_source.lua)
 
-castle://raw.githubusercontent.com/revillo/castle-dungeon/master/tails.lua) - Multiplayer snake/slither (tails_source.lua)
+castle://raw.githubusercontent.com/revillo/castle-dungeon/master/tails.lua - Multiplayer snake/slither (tails_source.lua)
+
+castle://raw.githubusercontent.com/revillo/castle-dungeon/master/brick.lua - Multiplayer breakout/arkanoid (tails_source.lua)
 
 ## API Quick Reference (v1.1)
 #### Common (shared between client and server)
@@ -58,12 +68,13 @@ MaxHistory -- How many ticks worth of input data to store. (120)
 ``` 
 ##### Callbacks
 ``` lua
-function Moat:playerUpdate(player, input) -- Defines how a player updates on each tick
+function Moat:playerUpdate(player, input, dt) -- Defines how a player updates on each tick
 function Moat:worldUpdate(dt) -- How npc entities update on each tick
 ```
 ##### Utilities
 ``` lua
-function Moat:new(EntityTypes, GameConstants) --EntityTypes is enum of game types
+function Moat:new(EntityTypes, GameConstants) --EntityTypes is enum of game types, Constants explained above
+function Moat:run() -- Run the game
 function Moat:getTick() -- Returns current tick of game state, like a timestamp
 function Moat:getOverlapArea(entityA, entityB) -- Return the overlapping area of two entity hitboxes
 function Moat:numEntitiesOfType(type)

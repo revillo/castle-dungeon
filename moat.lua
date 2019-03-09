@@ -255,7 +255,7 @@ function PlayerHistory.advance(ph, moat, input)
   
   moat.gameState.tick = ph.tick;
 
-  moat:playerUpdate(ph.state, input);
+  moat:playerUpdate(ph.state, input, moat.Constants.TickInterval);
   moat:worldUpdate(moat.Constants.TickInterval);  
   moat:cacheTemporaries();
 
@@ -351,7 +351,7 @@ function Moat:initClient()
   function self:clientOnDisconnected() end
   function self:clientLoad() end
   
-  function self:getPlayerState()
+  function self:clientGetPlayerState()
   
     return PlayerHistory.getLastState(ph);
     
@@ -670,7 +670,7 @@ function Moat:initServer()
               
             end
             
-            self:playerUpdate(player, clientInput);
+            self:playerUpdate(player, clientInput, self.Constants.TickInterval);
             
           end -- if player history
       end -- each player
@@ -737,7 +737,7 @@ function Moat:initCommon()
     return gameState.tick;
   end
   
-  function self:playerUpdate(player, input)
+  function self:playerUpdate(player, input, dt)
     
   end
   

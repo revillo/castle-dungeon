@@ -240,7 +240,7 @@ function MyGame:clientDraw()
     return;
   end
   
-  local player = self:getPlayerState();
+  local player = self:clientGetPlayerState();
   cameraCenter.x = player.x + player.w * 0.5;
   cameraCenter.y = player.y + player.h * 0.5;
   tileSizePx = tileSizePx * 0.95 + (30.0 / player.w) * 0.05;
