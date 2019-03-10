@@ -272,8 +272,8 @@ function Moat:initClient()
   self.home = cs.client.home;
   self.soundHistory = {};
   
-  self.home.inputHistory = List.new(0);
-  local ph = PlayerHistory.new(self.home.inputHistory);
+  self.home.ih = List.new(0);
+  local ph = PlayerHistory.new(self.home.ih);
   
   local isSpawned = false;
   
@@ -350,6 +350,18 @@ function Moat:initClient()
   function self:clientOnConnected() end
   function self:clientOnDisconnected() end
   function self:clientLoad() end
+  
+  function self:clientGetId() 
+    return cs.client.id;
+  end
+  
+  function self:clientGetHome()
+    return self.home;
+  end
+  
+  function self:clientGetShare()
+    return self.share;
+  end
   
   function self:clientGetPlayerState()
   
@@ -557,6 +569,14 @@ function Moat:initServer()
     
     end
     
+    function self:serverGetShare()
+      return self.share;
+    end
+    
+    function self:serverGetHome(clientId)
+      return self.homes[clientId];
+    end
+    
     function self:spawn(type, x, y, w, h, data)
       
       local uuid;
@@ -648,9 +668,9 @@ function Moat:initServer()
             --Server player state
           local player = self.entityForClient[id];
           
-          if (player and home.inputHistory) then
+          if (player and home.ih) then
           
-            local inputHistory = home.inputHistory;
+            local inputHistory = home.ih;
             local clientInput = nil; --PlayerHistory.getInput(home.playerHistory, tick-1);
             
             --Todo improve

@@ -226,7 +226,7 @@ function updateBall(ball, dt)
     end
     
     --Handle out of bounds on server only just to make sure ball is reset properly
-    if (BrickGame.isServer and ball.x < -1 or ball.x > GameConstants.GameWidth + 1) then
+    if (BrickGame.isServer and ball.x < -2 or ball.x > GameConstants.GameWidth + 2) then
       resetBall(ball);
       return;
     end

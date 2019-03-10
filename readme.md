@@ -122,7 +122,13 @@ function Moat:clientGetPing() -- Returns client round trip time to server in ms
 function Moat:clientSetInput(input) -- Set input used for updating player state. Shared with server
 function Moat:clientIsSpawned() -- Returns true/false for whether client is spawned
 function Moat:clientIsConnected() -- Returns true/false whether client is connected to server
-function Moat:clientSend(msg) -- Send a direct message to server
+function Moat:clientSend(msg) -- Send a direct message to server. msg is a serializable table. 
+function Moat:clientGetId() -- return client id for this client
+
+function Moat:clientGetShare() -- return server's 
+share table that client can read. See https://github.com/castle-games/share.lua
+function Moat:clientGetHome() -- return client's shared table. Client can write freely to this table and server can read.
+"ih" (inputHistory) is reserved key.
 ```
 
 #####  Internal operations 
@@ -140,6 +146,7 @@ function Moat:serverInitWorld()
 function Moat:serverReceive(clientId, msg) 
 function Moat:serverOnClientConnected(clientId)
 function Moat:serverOnClientDisconnected(clientId)
+
 ```
 ##### Utilities
 ``` lua
@@ -147,6 +154,9 @@ function Moat:serverSpawnPlayer(clientId, x, y, w, h, [data])
 function Moat:serverUpdate(dt)
 function Moat:serverSend(clientId, msg)
 function Moat:serverGetEntityForClientId(clientId) -- Get player's game entity from their clientId
+function Moat:serverGetShare() -- returns server's share table. Server can write to this table, all clients can read. "entities" and "tick" keys are used internally. See https://github.com/castle-games/share.lua 
+
+function Moat:serverGetHome(clientId) -- return client's home table for client id
 ```
 ##### Internal
 ``` lua
@@ -159,10 +169,25 @@ function Moat:serverUpdatePlayers()
 
 #### Version 1.2
 
+- Added Brick Example (brick_source.lua)
+  
 - Added functions
 
+``` lua
   Moat:serverGetEntityForClientId(clientId) -- returns player entity for client id
+  
+  Moat:serverGetShare() -- returns server's share table. See https://github.com/castle-games/share.lua
 
+  Moat:serverGetHome(clientId) -- return client's home table for client id
+  
+  Moat:clientGetId() -- return client id for this client
+  
+  Moat:clientGetShare() -- return server's share table. See https://github.com/castle-games/share.lua
+  
+  Moat:clientGetHome() -- return client's shared table. See
+  https://github.com/castle-games/share.lua
+```
+  
 #### Version 1.1
 
 - Inputs are sent only when they change, as opposed to sent on every frame to cut down on bandwidth.
@@ -177,11 +202,12 @@ function Moat:serverUpdatePlayers()
 
   to be more consistent with the spawn function. (Respawn player on client just despawns local client and waits for server to spawn a new one.)
 - Renamed the following functions  
+```lua
   Moat:clientSetInput(input) -- was setPlayerInput
   Moat:clientGetPing() -- was getPing
-
+```
 - Added the following functions. (Can spawn player on connect now)
-
+``` lua
   Moat:serverOnClientConnected(clientId)
   Moat:serverOnClientDisconnected(clientId)
   Moat:clientOnConnected()
@@ -191,11 +217,12 @@ function Moat:serverUpdatePlayers()
   
   Moat:eachEntity(fn) -- Calls fn on every entity in available state
   Moat:playSound(source) -- Plays a love audio source
-  
+```  
 - Modified the update functions to take dt to be more consistent with love
+```lua 
   Moat:clientUpdate(dt)
   Moat:serverUpdate(dt)
   Moat:worldUpdate(dt)
-
+```
 
 
