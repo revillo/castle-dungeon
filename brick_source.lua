@@ -10,6 +10,7 @@ local GameEntities = {
 
 local GameConstants = {
   ClientVisibility = 50,
+  MaxClients = 2,
   BallSpeed = 15,
   PaddleHeight = 6,
   PaddleWidth = 1,

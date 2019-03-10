@@ -867,7 +867,8 @@ function Moat:new(entityTypes, constants)
         CellSize = 5,
         TickInterval = 1.0 / 60.0,
         MaxHistory = 120,
-        ClientVisibility = 20 
+        ClientVisibility = 20,
+        MaxClients = 64
     },
     EntityTypes = {
       Player = 0
@@ -907,6 +908,9 @@ function Moat:runServer()
   print("run server");
   
     local server = cs.server;
+    
+    server.maxClients = self.Constants.MaxClients;
+    
     --(type, x, y, w, h, data)
     function server.connect(id)
       --self:spawnPlayer(id);

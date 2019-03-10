@@ -63,6 +63,7 @@ _despawnTick -- Despawn time for locally despawned entities
 ``` lua
 TickInterval -- Time between game ticks, (1/60 seconds)
 ClientVisibility -- How far a player can see around their entity (20 units)
+MaxClients -- Limit number of clients accepted by one server(64)
 CellSize -- Size of cell in spatial hash acceleration structure (5 units)
 MaxHistory -- How many ticks worth of input data to store. (120)
 ``` 
@@ -170,6 +171,8 @@ function Moat:serverUpdatePlayers()
 #### Version 1.2
 
 - Added Brick Example (brick_source.lua)
+
+- Added MaxClients to GameConstants
   
 - Added functions
 
