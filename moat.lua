@@ -510,6 +510,10 @@ function Moat:initClient()
     cs.client.send(msg);
   end
   
+  function self:clientSendUnreliable(msg)
+    cs.client.sendUnreliable(msg);
+  end
+  
   function self:clientIsConnected()
     return cs.client.connected;
   end
@@ -708,6 +712,10 @@ function Moat:initServer()
     
     function self:serverSend(clientId, msg)
       cs.server.send(clientId, msg);
+    end
+    
+    function self:serverSendUnreliable(clientId, msg)
+      cs.server.sendUnreliable(clientId, msg);
     end
     
     function self:serverReceive(clientId, msg) 

@@ -124,6 +124,7 @@ function Moat:clientSetInput(input) -- Set input used for updating player state.
 function Moat:clientIsSpawned() -- Returns true/false for whether client is spawned
 function Moat:clientIsConnected() -- Returns true/false whether client is connected to server
 function Moat:clientSend(msg) -- Send a direct message to server. msg is a serializable table. 
+function self:clientSendUnreliable(msg) -- Message sent once, may never arrive
 function Moat:clientGetId() -- return client id for this client
 
 function Moat:clientGetShare() -- return server's 
@@ -154,6 +155,7 @@ function Moat:serverOnClientDisconnected(clientId)
 function Moat:serverSpawnPlayer(clientId, x, y, w, h, [data])
 function Moat:serverUpdate(dt)
 function Moat:serverSend(clientId, msg)
+function Moat:serverSendUnreliable(clientId, msg) -- Message sent once, may never arrive
 function Moat:serverGetEntityForClientId(clientId) -- Get player's game entity from their clientId
 function Moat:serverGetShare() -- returns server's share table. Server can write to this table, all clients can read. "entities" and "tick" keys are used internally. See https://github.com/castle-games/share.lua 
 
@@ -189,6 +191,11 @@ function Moat:serverUpdatePlayers()
   
   Moat:clientGetHome() -- return client's shared table. See
   https://github.com/castle-games/share.lua
+  
+  Moat:clientSendUnreliable(msg) -- Uses ENet's unreliable channel to send a message that may never arrive.
+  
+  Moat:serverSendUnreliable(clientId, msg) -- Send unreliable message to client with clientId
+  
 ```
   
 #### Version 1.1
