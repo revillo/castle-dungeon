@@ -9,6 +9,8 @@ Check out the medium posts for overview / tutorials:
 
 [Part 2 - Making a Multiplayer Dungeon Crawler](https://medium.com/@olivver/moat-part-2-multiplayer-dungeon-crawler-cea6fe79801e)
 
+[Part 3 - Tips and troubleshooting](https://medium.com/@olivver/moat-tips-and-troubleshooting-ec1c434beb33)
+
 Add moat to your project:
 ``` lua
 -- game_source.lua
