@@ -20,6 +20,14 @@ function Math.clamp(a, lo, hi)
 
 end
 
+function Math.sign(scalar)
+  
+  if (scalar < 0.0) then return -1 end;
+  if (scalar > 0.0) then return 1 end;
+  return 0.0;
+  
+end
+
 function Utils.copyInto(toTable, fromTable)
   
   if (fromTable) then
@@ -38,7 +46,7 @@ end
 function Utils.lerp(a, b, t)
   return a * (1-t) + b * t;
 end
-Math2D.lerp = Utils.lerp;
+Math.lerp = Utils.lerp;
 
 -- Rotate over angle a in radians
 function Math2D.rotate(x, y, a)
@@ -90,10 +98,14 @@ function Utils.distance(entityA, entityB)
 end
 Entity.distance = Utils.distance;
 
+function Math2D.dot(x1, y1, x2, y2)
+  return x1 * x2 + y1 * y2;
+end
+
 --Signed angle between two normalized vectors
 function Math2D.signedAngle(x1, y1, x2, y2)
   
-  local dot = x1 * x2 + y1 * y2;
+  local dot = Math2D.dot(x1, y1, x2, y2);
   
   if (dot > 0.99) then  
     return 0.0;
@@ -260,8 +272,8 @@ function Moat:initClient()
   self.home = cs.client.home;
   self.soundHistory = {};
   
-  self.home.inputHistory = List.new(0);
-  local ph = PlayerHistory.new(self.home.inputHistory);
+  self.home.ih = List.new(0);
+  local ph = PlayerHistory.new(self.home.ih);
   
   local isSpawned = false;
   
@@ -338,6 +350,18 @@ function Moat:initClient()
   function self:clientOnConnected() end
   function self:clientOnDisconnected() end
   function self:clientLoad() end
+  
+  function self:clientGetId() 
+    return cs.client.id;
+  end
+  
+  function self:clientGetHome()
+    return self.home;
+  end
+  
+  function self:clientGetShare()
+    return self.share;
+  end
   
   function self:clientGetPlayerState()
   
@@ -486,6 +510,10 @@ function Moat:initClient()
     cs.client.send(msg);
   end
   
+  function self:clientSendUnreliable(msg)
+    cs.client.sendUnreliable(msg);
+  end
+  
   function self:clientIsConnected()
     return cs.client.connected;
   end
@@ -543,6 +571,14 @@ function Moat:initServer()
     
     function self:playSound()
     
+    end
+    
+    function self:serverGetShare()
+      return self.share;
+    end
+    
+    function self:serverGetHome(clientId)
+      return self.homes[clientId];
     end
     
     function self:spawn(type, x, y, w, h, data)
@@ -636,9 +672,9 @@ function Moat:initServer()
             --Server player state
           local player = self.entityForClient[id];
           
-          if (player and home.inputHistory) then
+          if (player and home.ih) then
           
-            local inputHistory = home.inputHistory;
+            local inputHistory = home.ih;
             local clientInput = nil; --PlayerHistory.getInput(home.playerHistory, tick-1);
             
             --Todo improve
@@ -678,6 +714,10 @@ function Moat:initServer()
       cs.server.send(clientId, msg);
     end
     
+    function self:serverSendUnreliable(clientId, msg)
+      cs.server.sendUnreliable(clientId, msg);
+    end
+    
     function self:serverReceive(clientId, msg) 
     
     end
@@ -688,6 +728,10 @@ function Moat:initServer()
     
     function self:serverOnClientDisconnected(clientId)
     
+    end
+    
+    function self:serverGetEntityForClientId(clientId)
+      return self.entityForClient[clientId];
     end
     
 end
@@ -831,7 +875,8 @@ function Moat:new(entityTypes, constants)
         CellSize = 5,
         TickInterval = 1.0 / 60.0,
         MaxHistory = 120,
-        ClientVisibility = 20 
+        ClientVisibility = 20,
+        MaxClients = 64
     },
     EntityTypes = {
       Player = 0
@@ -871,6 +916,9 @@ function Moat:runServer()
   print("run server");
   
     local server = cs.server;
+    
+    server.maxClients = self.Constants.MaxClients;
+    
     --(type, x, y, w, h, data)
     function server.connect(id)
       --self:spawnPlayer(id);
