@@ -44,7 +44,7 @@ castle://raw.githubusercontent.com/revillo/castle-dungeon/master/tails.lua - Mul
 
 castle://raw.githubusercontent.com/revillo/castle-dungeon/master/brick.lua - Multiplayer breakout/arkanoid (tails_source.lua)
 
-## API Quick Reference (v1.1)
+## API Quick Reference (v1.2)
 #### Common (shared between client and server)
  
 ##### Entity Built-In Properties
